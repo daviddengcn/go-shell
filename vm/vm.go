@@ -23,6 +23,8 @@ type NameSpace interface {
 	FindLocalVar(ident string) reflect.Value
 	// Adding a reflect.Value with pointer to a new variable
 	AddLocalVar(ident string, v reflect.Value)
+	// Returns a namespace for a new block
+	NewBlock() NameSpace
 }
 
 type theNameSpace struct {
@@ -56,6 +58,20 @@ func (ns *theNameSpace) FindLocalVar(ident string) reflect.Value {
 
 func (ns *theNameSpace) AddLocalVar(ident string, v reflect.Value) {
 	ns.LocalVars[ident] = v
+}
+
+func (ns *theNameSpace) NewBlock() NameSpace {
+	newNs := &theNameSpace{
+		UpperVars: make(map[string]reflect.Value),
+		LocalVars: make(map[string]reflect.Value),
+	}
+	for k, v := range ns.UpperVars {
+		newNs.UpperVars[k] = v
+	}
+	for k, v := range ns.LocalVars {
+		newNs.UpperVars[k] = v
+	}
+	return newNs
 }
 
 type machine struct {
@@ -205,19 +221,23 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				return fmt.Errorf("no new on left side of :=")
 			}
 
+			values := make([]reflect.Value, len(st.Rhs))
+			for i, r := range st.Rhs {
+				rV, err := checkSingleValue(mch.evalExpr(ns, r))
+				if err != nil {
+					return err
+				}
+				values[i] = rV
+			}
+			
 			for i, l := range st.Lhs {
 				lIdent := l.(*ast.Ident)
-				r := st.Rhs[i]
 				if v := ns.FindLocalVar(lIdent.Name); v != noValue {
 					return redeclareVarErr(lIdent.Name)
 				}
 				
-				vl, err := checkSingleValue(mch.evalExpr(ns, r))
-				if err != nil {
-					return err
-				}
-				v := reflect.New(vl.Type())
-				v.Elem().Set(vl)
+				v := reflect.New(values[i].Type())
+				v.Elem().Set(values[i])
 				ns.AddLocalVar(lIdent.Name, v)
 			}
 		} else {
@@ -228,7 +248,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 					return err
 				}
 				if len(st.Rhs) > 1 && rV.CanAddr() {
-					// Make a copy for a parallel assignment
+					// Make a copy of lvalue for a parallel assignment
 					tmp := reflect.New(rV.Type())
 					tmp.Elem().Set(rV)
 					rV = tmp.Elem()
@@ -277,7 +297,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				}
 				
 				if values != nil && len(spec.Names) != len(values) {
-					return fmt.Errorf(" assignment count mismatch: %d = %d", len(spec.Names), len(values))
+					return fmt.Errorf("assignment count mismatch: %d = %d", len(spec.Names), len(values))
 				}
 				
 				for i, name := range spec.Names {
@@ -303,10 +323,18 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			}
 		
 		case *ast.FuncDecl:
+			// TODO
 			ast.Print(token.NewFileSet(), decl)
 			return nil
 		}
 		
+	case *ast.BlockStmt:
+		blkNs := ns.NewBlock()
+		for _, st := range st.List {
+			if err := mch.runStatement(blkNs, st); err != nil {
+				return err
+			}
+		}
 	default:
 		log.Println("Unknown statement type")
 		ast.Print(token.NewFileSet(), st)
@@ -316,7 +344,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 }
 
 func isFragmentError(errList scanner.ErrorList, lastLine int) bool {
-	return len(errList) != 1 && errList[0].Pos.Line == lastLine
+	return len(errList) == 1 && errList[0].Pos.Line >= lastLine
 }
 
 const (
@@ -339,7 +367,7 @@ func (mch *machine) Run(line string) (isFragment bool) {
 			return true
 		}
 		ast.Print(token.NewFileSet(), err)
-		log.Printf("Syntax error: %v", err)
+		log.Printf("Syntax error: %v %d", err, nLines)
 		return false
 	}
 	//	log.Println(line)
