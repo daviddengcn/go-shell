@@ -193,6 +193,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			return fmt.Errorf("assignment count mismatch: %d %s %d", len(st.Lhs), st.Tok, len(st.Rhs))
 		}
 		if st.Tok == token.DEFINE {
+			// FIXME should be parallel assignment
 			hasNew := false
 			for _, l := range st.Lhs {
 				lIdent := l.(*ast.Ident)
@@ -220,7 +221,20 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				ns.AddLocalVar(lIdent.Name, v)
 			}
 		} else {
-			// FIXME should be parallel assignment
+			values := make([]reflect.Value, len(st.Rhs))
+			for i, r := range st.Rhs {
+				rV, err := checkSingleValue(mch.evalExpr(ns, r))
+				if err != nil {
+					return err
+				}
+				if len(st.Rhs) > 1 && rV.CanAddr() {
+					// Make a copy for a parallel assignment
+					tmp := reflect.New(rV.Type())
+					tmp.Elem().Set(rV)
+					rV = tmp.Elem()
+				}
+				values[i] = rV
+			}
 			for i, l := range st.Lhs {
 				lV, err := checkSingleValue(mch.evalExpr(ns, l))
 				if err != nil {
@@ -229,13 +243,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				if !lV.CanSet() {
 					return fmt.Errorf("Can not assign to %s", l)
 				}
-
-				rV, err := mch.evalExpr(ns, st.Rhs[i])
-				if err != nil {
-					return err
-				}
-
-				lV.Set(rV[0])
+				lV.Set(values[i])
 			}
 		}
 
