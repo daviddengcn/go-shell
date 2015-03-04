@@ -171,6 +171,20 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 	}
 }
 
+func (mch *machine) typeOf(tp ast.Expr) (reflect.Type, error) {
+	switch tp := tp.(type) {
+	case *ast.Ident:
+		switch tp.Name {
+		case "int": return reflect.TypeOf(1), nil
+		case "string": return reflect.TypeOf(""), nil
+		default:
+			return nil, fmt.Errorf("Unknown type %s", tp.Name)
+		}
+	default:
+		return nil, fmt.Errorf("Unknown type expr: %s", tp)
+	}
+}
+
 func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 	switch st := st.(type) {
 	case *ast.AssignStmt:
@@ -193,17 +207,20 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			for i, l := range st.Lhs {
 				lIdent := l.(*ast.Ident)
 				r := st.Rhs[i]
-				if v := ns.FindLocalVar(lIdent.Name); v == noValue {
-					vl, err := checkSingleValue(mch.evalExpr(ns, r))
-					if err != nil {
-						return err
-					}
-					v := reflect.New(vl.Type())
-					v.Elem().Set(vl)
-					ns.AddLocalVar(lIdent.Name, v)
+				if v := ns.FindLocalVar(lIdent.Name); v != noValue {
+					return redeclareVarErr(lIdent.Name)
 				}
+				
+				vl, err := checkSingleValue(mch.evalExpr(ns, r))
+				if err != nil {
+					return err
+				}
+				v := reflect.New(vl.Type())
+				v.Elem().Set(vl)
+				ns.AddLocalVar(lIdent.Name, v)
 			}
 		} else {
+			// FIXME should be parallel assignment
 			for i, l := range st.Lhs {
 				lV, err := checkSingleValue(mch.evalExpr(ns, l))
 				if err != nil {
@@ -226,6 +243,62 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 		_, err := mch.evalExpr(ns, st.X)
 		return err
 		
+	case *ast.DeclStmt:
+		switch decl := st.Decl.(type) {
+		case *ast.GenDecl:
+			for _, spec := range decl.Specs {
+				spec := spec.(*ast.ValueSpec)
+				var values []reflect.Value
+				if len(spec.Values) == 1 {
+					var err error
+					values, err = mch.evalExpr(ns, spec.Values[0])
+					if err != nil {
+						return err
+					}
+				} else if len(spec.Values) > 0 {
+					values = make([]reflect.Value, len(spec.Values))
+					for i, valueExpr := range spec.Values {
+						value, err := checkSingleValue(mch.evalExpr(ns, valueExpr))
+						if err != nil {
+							return err
+						}
+						values[i] = value
+					}
+				} else if spec.Type == nil {
+					return fmt.Errorf("Need type")
+				}
+				
+				if values != nil && len(spec.Names) != len(values) {
+					return fmt.Errorf(" assignment count mismatch: %d = %d", len(spec.Names), len(values))
+				}
+				
+				for i, name := range spec.Names {
+					if v := ns.FindLocalVar(name.Name); v != noValue {
+						return redeclareVarErr(name.Name)
+					}
+					var v reflect.Value
+					if spec.Type != nil {
+						tp, err := mch.typeOf(spec.Type)
+						if err != nil {
+							return err
+						}
+						v = reflect.New(tp)
+					} else {
+						v = reflect.New(values[i].Type())
+					}
+					
+					if values != nil {
+						v.Elem().Set(values[i])
+					}
+					ns.AddLocalVar(name.Name, v)
+				}
+			}
+		
+		case *ast.FuncDecl:
+			ast.Print(token.NewFileSet(), decl)
+			return nil
+		}
+		
 	default:
 		log.Println("Unknown statement type")
 		ast.Print(token.NewFileSet(), st)
@@ -235,8 +308,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 }
 
 func isFragmentError(errList scanner.ErrorList, lastLine int) bool {
-	err := errList[len(errList)-1]
-	return err.Pos.Line == lastLine
+	return len(errList) != 1 && errList[0].Pos.Line == lastLine
 }
 
 const (
