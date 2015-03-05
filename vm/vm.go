@@ -122,6 +122,28 @@ func fromSingleValue(vl reflect.Value, err error) ([]reflect.Value, error) {
 	return []reflect.Value{vl}, nil
 }
 
+var (
+	trueValue = reflect.ValueOf(true)
+	falseValue = reflect.ValueOf(false)
+)
+
+func keywordValue(ident string) reflect.Value {
+	switch ident {
+	case "true": return trueValue
+	case "false": return falseValue
+	default:
+		return noValue
+	}
+}
+
+func leftCompatible(x reflect.Value, op token.Token) bool {
+	return true
+}
+
+func matchType(x, y reflect.Value) (nX, nY reflect.Value, err error) {
+	return x, y, nil
+}
+
 // Returns slice of values themselves not the pointers.
 func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, error) {
 	switch expr := expr.(type) {
@@ -142,11 +164,15 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		}
 
 	case *ast.Ident:
-		v := ns.FindVar(expr.Name)
-		if v == noValue {
-			return nil, fmt.Errorf("Unknown Ident %v", expr.Name)
+		if v := keywordValue(expr.Name); v != noValue {
+			return fromSingleValue(v, nil)
 		}
-		return []reflect.Value{reflect.Indirect(v)}, nil
+	
+		if v := ns.FindVar(expr.Name); v != noValue {
+			return fromSingleValue(reflect.Indirect(v), nil)
+		}
+		
+		return nil, fmt.Errorf("Unknown Ident %v", expr.Name)
 
 	case *ast.CallExpr:
 		fn, err := checkSingleValue(mch.evalExpr(ns, expr.Fun))
@@ -179,7 +205,60 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 			ast.Print(token.NewFileSet(), x)
 			return []reflect.Value{reflect.ValueOf(expr)}, nil
 		}
-
+		
+	case *ast.BinaryExpr:
+		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
+		if err != nil {
+			return nil, err
+		}
+		
+		if expr.Op == token.LAND || expr.Op == token.LOR {
+			// short cut for boolean
+			if x.Kind() != reflect.Bool {
+				return nil, invalidOperationErr(expr.Op.String(), x.Type())
+			}
+			bX := x.Bool()
+			if expr.Op == token.LAND && !bX || expr.Op == token.LOR && bX {
+				return fromSingleValue(reflect.ValueOf(bX), nil)
+			}
+			
+			y, err := checkSingleValue(mch.evalExpr(ns, expr.Y))
+			return fromSingleValue(y, err)
+		}
+		
+		y, err := checkSingleValue(mch.evalExpr(ns, expr.Y))
+		if err != nil {
+			return nil, err
+		}
+		
+		
+		if x, y, err = matchType(x, y); err != nil {
+			return nil, err
+		}
+		
+		switch expr.Op {
+		case token.LSS:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				return fromSingleValue(reflect.ValueOf(x.Int() < y.Int()), nil)
+			default:
+				panic("")
+			}
+			
+		case token.ADD:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				res := reflect.New(x.Type())
+				res.Elem().SetInt(x.Int() + y.Int())
+				return fromSingleValue(res.Elem(), nil)
+			default:
+				panic("")
+			}
+		
+		default:
+			return nil, fmt.Errorf("Unknown op: %v", expr.Op)
+		}
+		
 	default:
 		log.Println("Unknown expr type")
 		ast.Print(token.NewFileSet(), expr)
@@ -191,7 +270,16 @@ func (mch *machine) typeOf(tp ast.Expr) (reflect.Type, error) {
 	switch tp := tp.(type) {
 	case *ast.Ident:
 		switch tp.Name {
-		case "int": return reflect.TypeOf(1), nil
+		case "int": return reflect.TypeOf(int(0)), nil
+		case "int8": return reflect.TypeOf(int8(0)), nil
+		case "int16": return reflect.TypeOf(int16(0)), nil
+		case "int32", "rune": return reflect.TypeOf(int32(0)), nil
+		case "int64": return reflect.TypeOf(int64(0)), nil
+		case "uint": return reflect.TypeOf(uint(0)), nil
+		case "uint8", "byte": return reflect.TypeOf(uint8(0)), nil
+		case "uint16": return reflect.TypeOf(uint16(0)), nil
+		case "uint32": return reflect.TypeOf(uint32(0)), nil
+		case "uint64": return reflect.TypeOf(uint64(0)), nil
 		case "string": return reflect.TypeOf(""), nil
 		default:
 			return nil, fmt.Errorf("Unknown type %s", tp.Name)
@@ -213,7 +301,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			hasNew := false
 			for _, l := range st.Lhs {
 				lIdent := l.(*ast.Ident)
-				if v := ns.FindLocalVar(lIdent.Name); v == noValue {
+				if ns.FindLocalVar(lIdent.Name) == noValue {
 					hasNew = true
 				}
 			}
@@ -227,18 +315,24 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				if err != nil {
 					return err
 				}
+				if len(st.Rhs) > 1 && rV.CanAddr() {
+					// Make a copy of lvalue for parallel assignments
+					tmp := reflect.New(rV.Type())
+					tmp.Elem().Set(rV)
+					rV = tmp.Elem()
+				}
 				values[i] = rV
 			}
 			
 			for i, l := range st.Lhs {
 				lIdent := l.(*ast.Ident)
-				if v := ns.FindLocalVar(lIdent.Name); v != noValue {
-					return redeclareVarErr(lIdent.Name)
+				v := ns.FindLocalVar(lIdent.Name)
+				if v == noValue {
+					v = reflect.New(values[i].Type())
+					ns.AddLocalVar(lIdent.Name, v)
 				}
 				
-				v := reflect.New(values[i].Type())
 				v.Elem().Set(values[i])
-				ns.AddLocalVar(lIdent.Name, v)
 			}
 		} else {
 			values := make([]reflect.Value, len(st.Rhs))
@@ -248,7 +342,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 					return err
 				}
 				if len(st.Rhs) > 1 && rV.CanAddr() {
-					// Make a copy of lvalue for a parallel assignment
+					// Make a copy of lvalue for parallel assignments
 					tmp := reflect.New(rV.Type())
 					tmp.Elem().Set(rV)
 					rV = tmp.Elem()
@@ -261,7 +355,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 					return err
 				}
 				if !lV.CanSet() {
-					return fmt.Errorf("Can not assign to %s", l)
+					return cannotAssignToErr(lV.String())
 				}
 				lV.Set(values[i])
 			}
@@ -335,6 +429,89 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				return err
 			}
 		}
+		
+	case *ast.ForStmt:
+		blkNs := ns.NewBlock()
+		if st.Init != nil {
+			mch.runStatement(blkNs, st.Init)
+		}
+		
+		for {
+			cond := true
+			if st.Cond != nil {
+				cnd, err := checkSingleValue(mch.evalExpr(blkNs, st.Cond))
+				if err != nil {
+					return err
+				}
+				
+				if cnd.Kind() != reflect.Bool {
+					return nonBoolAsConditionErr(cnd, "for")
+				}
+				cond = cnd.Bool()
+			}
+			if !cond {
+				break
+			}
+			
+			if err := mch.runStatement(blkNs, st.Body); err != nil {
+				return err
+			}
+			
+			if st.Post != nil {
+				if err := mch.runStatement(blkNs, st.Post); err != nil {
+					return err
+				}
+			}
+		}
+		
+	case *ast.IncDecStmt:
+		x, err := checkSingleValue(mch.evalExpr(ns, st.X))
+		if err != nil {
+			return err
+		}
+		
+		if !x.CanSet() {
+			return cannotAssignToErr(x.String())
+		}
+		
+		switch  x.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			if st.Tok == token.INC {
+				x.SetInt(x.Int() + 1)
+			} else {
+				x.SetInt(x.Int() - 1)
+			}
+			return nil
+			
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			if st.Tok == token.INC {
+				x.SetUint(x.Uint() + 1)
+			} else {
+				x.SetUint(x.Uint() - 1)
+			}
+			return nil
+			
+		case reflect.Float32, reflect.Float64:
+			if st.Tok == token.INC {
+				x.SetFloat(x.Float() + 1)
+			} else {
+				x.SetFloat(x.Float() - 1)
+			}
+			return nil
+
+		case reflect.Complex64, reflect.Complex128:			
+			if st.Tok == token.INC {
+				x.SetComplex(x.Complex() + 1)
+			} else {
+				x.SetComplex(x.Complex() - 1)
+			}
+			return nil
+			
+		default:
+			return invalidOperationErr(st.Tok.String(), x.Type())
+		}
+		panic("")
+		
 	default:
 		log.Println("Unknown statement type")
 		ast.Print(token.NewFileSet(), st)
