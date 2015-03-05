@@ -34,10 +34,13 @@ func main() {
 			}
 			log.Fatalf("Read error: %v", err)
 		}
-		isFragment := vm.Run(buffered + line)
-		if isFragment {
+		err = vm.Run(buffered + line)
+		if err == gsvm.FragmentErr {
 			buffered += "\n" + line
 		} else {
+			if err != nil {
+				log.Println(err)
+			}
 			buffered = ""
 		}
 	}

@@ -20,3 +20,15 @@ func invalidOperationErr(op string, tp reflect.Type) error {
 func cannotAssignToErr(v string) error {
 	return fmt.Errorf("Can not assign to %s", v)
 }
+
+func cannotUseAsInAssignmentErr(vl reflect.Value, dstTp reflect.Type) error {
+	return fmt.Errorf("cannot use %s (type %s) as type %s in assignment", vl, vl.Type(), dstTp)
+}
+
+func unknownTypeErr(name string) error {
+	return fmt.Errorf("Unknown type %s", name)
+}
+
+var (
+	noNewVarsErr = fmt.Errorf("no new on left side of :=")
+)
