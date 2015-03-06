@@ -50,4 +50,12 @@ func TestTypeLiteralConvert(t *testing.T) {
 			assert.Equals(t, "k", k.Elem().Interface(), float32(2))
 		}
 	}
+
+	if assert.NoError(t, mch.Run(`l = 3`)) {
+		l := mch.GlobalNameSpace.FindLocalVar("l")
+		if assert.NotEquals(t, "l", l, noValue) {
+			assert.Equals(t, "l.Type()", l.Type(), reflect.TypeOf(new(complex128)))
+			assert.Equals(t, "l", l.Elem().Interface(), complex(3, 0))
+		}
+	}
 }

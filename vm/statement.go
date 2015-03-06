@@ -16,7 +16,10 @@ const (
 )
 
 func (e BranchErr) Error() string {
-	return ""
+	if e == beBreak {
+		return "break"
+	}
+	return "continue"
 }
 
 func assignTo(v reflect.Value, vl reflect.Value) error {
@@ -34,7 +37,8 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 		if len(st.Lhs) != len(st.Rhs) {
 			return fmt.Errorf("assignment count mismatch: %d %s %d", len(st.Lhs), st.Tok, len(st.Rhs))
 		}
-		if st.Tok == token.DEFINE {
+		switch st.Tok {
+		case token.DEFINE:
 			// Check to make sure at least one new variables
 			hasNew := false
 			for _, l := range st.Lhs {
@@ -81,7 +85,8 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 					return err
 				}
 			}
-		} else {
+
+		case token.ASSIGN:
 			values := make([]reflect.Value, len(st.Rhs))
 			for i, r := range st.Rhs {
 				rV, err := checkSingleValue(mch.evalExpr(ns, r))
@@ -97,16 +102,100 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				values[i] = rV
 			}
 			for i, l := range st.Lhs {
-				lV, err := checkSingleValue(mch.evalExpr(ns, l))
+				v, err := checkSingleValue(mch.evalExpr(ns, l))
 				if err != nil {
 					return err
 				}
-				if !lV.CanSet() {
-					return cannotAssignToErr(lV.String())
+				if !v.CanSet() {
+					return cannotAssignToErr(v.String())
 				}
-				lV.Set(values[i])
+				v.Set(matchDestType(values[i], v.Type()))
 			}
+
+		case token.ADD_ASSIGN, token.SUB_ASSIGN, token.MUL_ASSIGN, token.QUO_ASSIGN, token.REM_ASSIGN:
+			l := st.Lhs[0]
+			v, err := checkSingleValue(mch.evalExpr(ns, l))
+			if err != nil {
+				return err
+			}
+
+			if !v.CanSet() {
+				return cannotAssignToErr(v.String())
+			}
+
+			r := st.Rhs[0]
+			delta, err := checkSingleValue(mch.evalExpr(ns, r))
+			if err != nil {
+				return err
+			}
+			delta = matchDestType(delta, v.Type())
+			var newV interface{}
+			switch v.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				switch st.Tok {
+				case token.ADD_ASSIGN:
+					newV = v.Int() + delta.Int()
+				case token.SUB_ASSIGN:
+					newV = v.Int() - delta.Int()
+				case token.MUL_ASSIGN:
+					newV = v.Int() * delta.Int()
+				case token.QUO_ASSIGN:
+					newV = v.Int() / delta.Int()
+				case token.REM_ASSIGN:
+					newV = v.Int() % delta.Int()
+				}
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				switch st.Tok {
+				case token.ADD_ASSIGN:
+					newV = v.Uint() + delta.Uint()
+				case token.SUB_ASSIGN:
+					newV = v.Uint() - delta.Uint()
+				case token.MUL_ASSIGN:
+					newV = v.Uint() * delta.Uint()
+				case token.QUO_ASSIGN:
+					newV = v.Uint() / delta.Uint()
+				case token.REM_ASSIGN:
+					newV = v.Uint() % delta.Uint()
+				}
+			case reflect.Float32, reflect.Float64:
+				switch st.Tok {
+				case token.ADD_ASSIGN:
+					newV = v.Float() + delta.Float()
+				case token.SUB_ASSIGN:
+					newV = v.Float() - delta.Float()
+				case token.MUL_ASSIGN:
+					newV = v.Float() * delta.Float()
+				case token.QUO_ASSIGN:
+					newV = v.Float() / delta.Float()
+				case token.REM_ASSIGN:
+					return invalidOperationErr(st.Tok.String(), v.Type())
+				}
+			case reflect.Complex64, reflect.Complex128:
+				switch st.Tok {
+				case token.ADD_ASSIGN:
+					newV = v.Complex() + delta.Complex()
+				case token.SUB_ASSIGN:
+					newV = v.Complex() - delta.Complex()
+				case token.MUL_ASSIGN:
+					newV = v.Complex() * delta.Complex()
+				case token.QUO_ASSIGN:
+					newV = v.Complex() / delta.Complex()
+				case token.REM_ASSIGN:
+					return invalidOperationErr(st.Tok.String(), v.Type())
+				}
+			case reflect.String:
+				switch st.Tok {
+				case token.ADD_ASSIGN:
+					newV = v.String() + delta.String()
+				default:
+					return invalidOperationErr(st.Tok.String(), v.Type())
+				}
+			default:
+				return invalidOperationErr(st.Tok.String(), v.Type())
+			}
+			v.Set(reflect.ValueOf(newV).Convert(v.Type()))
 		}
+		return nil
 
 	case *ast.ExprStmt:
 		_, err := mch.evalExpr(ns, st.X)
@@ -170,6 +259,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 					ns.AddLocalVar(name.Name, pv)
 				}
 			}
+			return nil
 
 		case *ast.FuncDecl:
 			// TODO
@@ -184,6 +274,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				return err
 			}
 		}
+		return nil
 
 	case *ast.ForStmt:
 		blkNs := ns
@@ -210,7 +301,13 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			}
 
 			if err := mch.runStatement(blkNs, st.Body); err != nil {
-				return err
+				if brk, ok := err.(BranchErr); ok {
+					if brk == beBreak {
+						break
+					}
+				} else {
+					return err
+				}
 			}
 
 			if st.Post != nil {
@@ -219,6 +316,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				}
 			}
 		}
+		return nil
 
 	case *ast.BranchStmt:
 		if st.Tok == token.BREAK {
@@ -248,10 +346,13 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				return err
 			}
 		} else {
-			if err := mch.runStatement(blkNs, st.Else); err != nil {
-				return err
+			if st.Else != nil {
+				if err := mch.runStatement(blkNs, st.Else); err != nil {
+					return err
+				}
 			}
 		}
+		return nil
 
 	case *ast.IncDecStmt:
 		x, err := checkSingleValue(mch.evalExpr(ns, st.X))
@@ -300,11 +401,10 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			return invalidOperationErr(st.Tok.String(), x.Type())
 		}
 		panic("")
-
-	default:
-		log.Println("Unknown statement type")
-		ast.Print(token.NewFileSet(), st)
-		return fmt.Errorf("Unknown statement type")
 	}
-	return nil
+
+	log.Println("Unknown statement type")
+	ast.Print(token.NewFileSet(), st)
+	panic("")
+	return fmt.Errorf("Unknown statement type")
 }
