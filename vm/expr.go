@@ -27,12 +27,34 @@ func fromSingleValue(vl reflect.Value, err error) ([]reflect.Value, error) {
 	return []reflect.Value{vl}, nil
 }
 
+func singleValue(vl reflect.Value) ([]reflect.Value, error) {
+	return []reflect.Value{vl}, nil
+}
+
 func valueToResult(vl interface{}) ([]reflect.Value, error) {
 	return []reflect.Value{reflect.ValueOf(vl)}, nil
 }
 
 func typedValueToResult(vl interface{}, tp reflect.Type) ([]reflect.Value, error) {
 	return []reflect.Value{reflect.ValueOf(vl).Convert(tp)}, nil
+}
+
+func calcFuncInNumRange(tp reflect.Type) (mn, mx int) {
+	if tp.IsVariadic() {
+		return tp.NumIn() - 1, -1
+	}
+	return tp.NumIn(), tp.NumIn()
+}
+
+func valueEqual(a, b reflect.Value) (bool, error) {
+	if !a.Type().Comparable() {
+		return false, fmt.Errorf("%v not comparable", a)
+	}
+	if !b.Type().Comparable() {
+		return false, fmt.Errorf("%v not comparable", b)
+	}
+
+	return a.Interface() == b.Interface(), nil
 }
 
 // Returns slice of values themselves not the pointers.
@@ -69,8 +91,12 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 			return fromSingleValue(v, nil)
 		}
 
-		if v := ns.FindVar(expr.Name); v != noValue {
-			return fromSingleValue(reflect.Indirect(v), nil)
+		if v, _ := ns.FindVar(expr.Name); v != noValue {
+			return fromSingleValue(v.Elem(), nil)
+		}
+
+		if tp, err := mch.evalType(expr); err == nil {
+			return singleValue(reflect.ValueOf(TypeValue{tp}))
 		}
 
 		return nil, fmt.Errorf("Unknown Ident %v", expr.Name)
@@ -80,19 +106,74 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		if err != nil {
 			return nil, err
 		}
+		fnType := fn.Type()
+
+		if fnType == TypeValueType {
+			tp := fn.Interface().(TypeValue).Type
+			if len(expr.Args) > 1 {
+				return nil, tooManyArgumentsToConversionErr(tp)
+			}
+			if len(expr.Args) < 1 {
+				return nil, missingArugmentToConversionErr(tp)
+			}
+			v, err := checkSingleValue(mch.evalExpr(ns, expr.Args[0]))
+			if err != nil {
+				return nil, err
+			}
+
+			if !v.Type().ConvertibleTo(tp) {
+				return nil, cannotConvertToErr(v, tp)
+			}
+			return singleValue(v.Convert(tp))
+		}
 
 		if fn.Kind() != reflect.Func {
 			return nil, fmt.Errorf("cannot call non-function (type %s)", fn.Type())
 		}
 
-		// TODO when len(expr.Args) == 1, check multi return value situation
-		args := make([]reflect.Value, len(expr.Args))
-		for i, arg := range expr.Args {
-			argV, err := checkSingleValue(mch.evalExpr(ns, arg))
-			if err != nil {
+		var args []reflect.Value
+		if len(expr.Args) == 1 {
+			// actually input args number is the number of return values
+			var err error
+			if args, err = mch.evalExpr(ns, expr.Args[0]); err != nil {
 				return nil, err
 			}
-			args[i] = argV
+		} else {
+			args = make([]reflect.Value, len(expr.Args))
+			for i, arg := range expr.Args {
+				argV, err := checkSingleValue(mch.evalExpr(ns, arg))
+				if err != nil {
+					return nil, err
+				}
+				args[i] = argV
+			}
+		}
+
+		mn, mx := calcFuncInNumRange(fnType)
+		if len(args) < mn {
+			return nil, notEnoughArgumentsErr(fn.String())
+		}
+
+		if mx >= 0 && len(args) > mx {
+			return nil, tooManyArgumentsErr(fn.String())
+		}
+
+		for i := 0; i < mn; i++ {
+			tp := fnType.In(i)
+			args[i] = matchDestType(args[i], tp)
+			if !args[i].Type().AssignableTo(tp) {
+				return nil, cannotUseAsInArgumentErr(args[i], tp, fn.String())
+			}
+		}
+
+		if fn.Type().IsVariadic() {
+			tp := fnType.In(fnType.NumIn() - 1).Elem()
+			for i := mn; i < len(args); i++ {
+				args[i] = matchDestType(args[i], tp)
+				if !args[i].Type().AssignableTo(tp) {
+					return nil, cannotUseAsInArgumentErr(args[i], tp, fn.String())
+				}
+			}
 		}
 
 		return fn.Call(args), nil
@@ -106,6 +187,58 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 			ast.Print(token.NewFileSet(), x)
 			return []reflect.Value{reflect.ValueOf(expr)}, nil
 		}
+
+	case *ast.UnaryExpr:
+		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
+		if err != nil {
+			return nil, err
+		}
+
+		switch expr.Op {
+		case token.ADD:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+				reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return valueToResult(x.Interface())
+			}
+		case token.SUB:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				return typedValueToResult(-x.Int(), x.Type())
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return typedValueToResult(-x.Uint(), x.Type())
+			}
+		case token.NOT:
+			switch x.Kind() {
+			case reflect.Bool:
+				return typedValueToResult(!x.Bool(), x.Type())
+			}
+		case token.XOR:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				return typedValueToResult(^x.Int(), x.Type())
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return typedValueToResult(^x.Uint(), x.Type())
+			}
+		case token.AND:
+			if x.CanAddr() {
+				return singleValue(x.Addr())
+			}
+			return nil, cannotTakeTheAddressOfErr(expr.X)
+			// TODO token.ARROW
+		}
+		return nil, invalidOperationErr(expr.Op.String(), x.Type())
+
+	case *ast.StarExpr:
+		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
+		if err != nil {
+			return nil, err
+		}
+
+		if x.Kind() == reflect.Ptr {
+			return singleValue(x.Elem())
+		}
+		return nil, invalidIndirectOfErr(x)
 
 	case *ast.BinaryExpr:
 		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
@@ -197,6 +330,86 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 				return typedValueToResult(x.Float()+y.Float(), x.Type())
 			case reflect.Complex64, reflect.Complex128:
 				return typedValueToResult(x.Complex()+y.Complex(), x.Type())
+			case reflect.String:
+				return typedValueToResult(x.String()+y.String(), x.Type())
+			}
+		case token.SUB:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				return typedValueToResult(x.Int()-y.Int(), x.Type())
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return typedValueToResult(x.Uint()-y.Uint(), x.Type())
+			case reflect.Float32, reflect.Float64:
+				return typedValueToResult(x.Float()-y.Float(), x.Type())
+			case reflect.Complex64, reflect.Complex128:
+				return typedValueToResult(x.Complex()-y.Complex(), x.Type())
+			}
+		case token.MUL:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				return typedValueToResult(x.Int()*y.Int(), x.Type())
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return typedValueToResult(x.Uint()*y.Uint(), x.Type())
+			case reflect.Float32, reflect.Float64:
+				return typedValueToResult(x.Float()*y.Float(), x.Type())
+			case reflect.Complex64, reflect.Complex128:
+				return typedValueToResult(x.Complex()*y.Complex(), x.Type())
+			}
+		case token.QUO:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				return typedValueToResult(x.Int()/y.Int(), x.Type())
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return typedValueToResult(x.Uint()/y.Uint(), x.Type())
+			case reflect.Float32, reflect.Float64:
+				return typedValueToResult(x.Float()/y.Float(), x.Type())
+			case reflect.Complex64, reflect.Complex128:
+				return typedValueToResult(x.Complex()/y.Complex(), x.Type())
+			}
+		case token.REM:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				return typedValueToResult(x.Int()%y.Int(), x.Type())
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return typedValueToResult(x.Uint()%y.Uint(), x.Type())
+			}
+		case token.AND:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				return typedValueToResult(x.Int()&y.Int(), x.Type())
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return typedValueToResult(x.Uint()&y.Uint(), x.Type())
+			}
+		case token.OR:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				return typedValueToResult(x.Int()|y.Int(), x.Type())
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return typedValueToResult(x.Uint()|y.Uint(), x.Type())
+			}
+		case token.XOR:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				return typedValueToResult(x.Int()^y.Int(), x.Type())
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return typedValueToResult(x.Uint()^y.Uint(), x.Type())
+			}
+		case token.SHL:
+			switch x.Kind() {
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return typedValueToResult(x.Uint()<<y.Uint(), x.Type())
+			}
+		case token.SHR:
+			switch x.Kind() {
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return typedValueToResult(x.Uint()>>y.Uint(), x.Type())
+			}
+		case token.AND_NOT:
+			switch x.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				return typedValueToResult(x.Int()&^y.Int(), x.Type())
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				return typedValueToResult(x.Uint()&^y.Uint(), x.Type())
 			}
 
 		default:
@@ -204,10 +417,7 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		}
 
 		return nil, invalidOperationErr(expr.Op.String(), x.Type())
-	default:
-		log.Println("Unknown expr type")
-		ast.Print(token.NewFileSet(), expr)
-		return []reflect.Value{reflect.ValueOf(expr)}, nil
 	}
+	ast.Print(token.NewFileSet(), expr)
 	return nil, fmt.Errorf("Unknown expr type")
 }

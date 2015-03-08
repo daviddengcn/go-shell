@@ -65,6 +65,28 @@ var (
 	}
 )
 
+func matchType(x, y reflect.Value) (nX, nY reflect.Value, err error) {
+	if x.Type() == y.Type() {
+		return x, y, nil
+	}
+
+	if x.Type() == runeLiteralType {
+		x = matchDestType(x, y.Type())
+	} else if y.Type() == runeLiteralType {
+		y = matchDestType(y, x.Type())
+	} else {
+		x, y = matchDestType(x, y.Type()), matchDestType(y, x.Type())
+	}
+
+	if x.Type() == y.Type() {
+		return x, y, nil
+	}
+
+	return x, y, mismatchTypesErr(x.Type(), y.Type())
+}
+
+// matchDestType tries match vl with dstTp and return converted value. If
+// fail to match, return vl.
 func matchDestType(vl reflect.Value, dstTp reflect.Type) reflect.Value {
 	if vl.Type() == dstTp {
 		return vl
@@ -158,6 +180,12 @@ var (
 		"string":     reflect.TypeOf(""),
 	}
 )
+
+type TypeValue struct {
+	reflect.Type
+}
+
+var TypeValueType = reflect.TypeOf(TypeValue{})
 
 func (mch *machine) evalType(expr ast.Expr) (reflect.Type, error) {
 	switch expr := expr.(type) {

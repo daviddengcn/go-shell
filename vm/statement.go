@@ -39,13 +39,16 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 		}
 		switch st.Tok {
 		case token.DEFINE:
-			// Check to make sure at least one new variables
+			// Check to make sure at least one new variables and not constants in Lhs
 			hasNew := false
 			for _, l := range st.Lhs {
-				lIdent := l.(*ast.Ident)
-				if ns.FindLocalVar(lIdent.Name) == noValue {
+				ident := l.(*ast.Ident)
+				v, isConst := ns.FindLocalVar(ident.Name)
+				if isConst {
+					return cannotAssignToErr(ident.Name)
+				}
+				if v == noValue {
 					hasNew = true
-					break
 				}
 			}
 			if !hasNew {
@@ -71,12 +74,12 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			// Define and assign
 			for i, l := range st.Lhs {
 				lIdent := l.(*ast.Ident)
-				pv := ns.FindLocalVar(lIdent.Name)
+				pv, _ := ns.FindLocalVar(lIdent.Name)
 				vl := values[i]
 				if pv == noValue {
 					vl = removeBasicLit(vl)
 					pv = reflect.New(vl.Type())
-					ns.AddLocalVar(lIdent.Name, pv)
+					ns.AddLocalVar(lIdent.Name, pv, false)
 				} else {
 					vl = matchDestType(vl, pv.Elem().Type())
 				}
@@ -205,6 +208,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 		switch decl := st.Decl.(type) {
 		case *ast.GenDecl:
 			for _, spec := range decl.Specs {
+				isConst := decl.Tok == token.CONST
 				spec := spec.(*ast.ValueSpec)
 				var values []reflect.Value
 				if len(spec.Values) == 1 {
@@ -230,7 +234,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				}
 
 				for i, name := range spec.Names {
-					if ns.FindLocalVar(name.Name) != noValue {
+					if pv, _ := ns.FindLocalVar(name.Name); pv != noValue {
 						return redeclareVarErr(name.Name)
 					}
 					var pv reflect.Value
@@ -248,7 +252,10 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 							vl = matchDestType(vl, tp)
 						}
 					} else {
-						vl = removeBasicLit(vl)
+						if !isConst {
+							// a variable cannot take basic lit types.
+							vl = removeBasicLit(vl)
+						}
 						tp = vl.Type()
 					}
 					pv = reflect.New(tp)
@@ -256,7 +263,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 					if values != nil {
 						pv.Elem().Set(vl)
 					}
-					ns.AddLocalVar(name.Name, pv)
+					ns.AddLocalVar(name.Name, pv, isConst)
 				}
 			}
 			return nil
@@ -400,7 +407,61 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 		default:
 			return invalidOperationErr(st.Tok.String(), x.Type())
 		}
-		panic("")
+
+	case *ast.SwitchStmt:
+		blkNs := ns
+		if st.Init != nil {
+			blkNs = ns.NewBlock()
+			mch.runStatement(blkNs, st.Init)
+		}
+
+		tag := trueValue
+		if st.Tag != nil {
+			var err error
+			if tag, err = checkSingleValue(mch.evalExpr(blkNs, st.Tag)); err != nil {
+				return err
+			}
+		}
+
+		for _, el := range st.Body.List {
+			cc := el.(*ast.CaseClause)
+			matched := false
+			for _, el := range cc.List {
+				vl, err := checkSingleValue(mch.evalExpr(blkNs, el))
+				if err != nil {
+					return err
+				}
+
+				tag := tag
+				if tag, vl, err = matchType(tag, vl); err != nil {
+					return err
+				}
+
+				eq, err := valueEqual(tag, vl)
+				if err != nil {
+					return err
+				}
+				if eq {
+					matched = true
+					break
+				}
+			}
+
+			if !matched {
+				continue
+			}
+
+			caseBlkNs := blkNs.NewBlock()
+			for _, bodySt := range cc.Body {
+				err := mch.runStatement(caseBlkNs, bodySt)
+				if err != nil {
+					// TODO support fallthrough, break
+					return err
+				}
+			}
+			break
+		}
+		return nil
 	}
 
 	log.Println("Unknown statement type")

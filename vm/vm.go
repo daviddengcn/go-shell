@@ -8,6 +8,7 @@ import (
 	"go/scanner"
 	"go/token"
 	"log"
+	"math"
 	"reflect"
 	"strings"
 )
@@ -22,58 +23,81 @@ type Machine interface {
 
 type NameSpace interface {
 	// Returns a reflect.Value with pointer to a variable
-	FindVar(ident string) reflect.Value
+	FindVar(ident string) (v reflect.Value, isConst bool)
 	// Returns a reflect.Value with pointer to a local variable
-	FindLocalVar(ident string) reflect.Value
+	FindLocalVar(ident string) (v reflect.Value, isConst bool)
 	// Adding a reflect.Value with pointer to a new variable
-	AddLocalVar(ident string, v reflect.Value)
+	AddLocalVar(ident string, v reflect.Value, isConst bool)
 	// Returns a namespace for a new block
 	NewBlock() NameSpace
 }
 
 type theNameSpace struct {
-	UpperVars map[string]reflect.Value
-	LocalVars map[string]reflect.Value
+	UpperVars   map[string]reflect.Value
+	UpperConsts map[string]reflect.Value
+	LocalVars   map[string]reflect.Value
+	LocalConsts map[string]reflect.Value
 }
 
 func newNameSpace() NameSpace {
 	return &theNameSpace{
-		UpperVars: make(map[string]reflect.Value),
-		LocalVars: make(map[string]reflect.Value),
+		UpperVars:   make(map[string]reflect.Value),
+		UpperConsts: make(map[string]reflect.Value),
+		LocalVars:   make(map[string]reflect.Value),
+		LocalConsts: make(map[string]reflect.Value),
 	}
 }
 
-func (ns *theNameSpace) FindVar(ident string) reflect.Value {
-	if v := ns.FindLocalVar(ident); v != noValue {
-		return v
+func (ns *theNameSpace) FindVar(ident string) (v reflect.Value, isConst bool) {
+	if v, isConst := ns.FindLocalVar(ident); v != noValue {
+		return v, isConst
 	}
 	if v, ok := ns.UpperVars[ident]; ok {
-		return v
+		return v, false
 	}
-	return noValue
+	if v, ok := ns.UpperConsts[ident]; ok {
+		return v, true
+	}
+	return noValue, false
 }
 
-func (ns *theNameSpace) FindLocalVar(ident string) reflect.Value {
+func (ns *theNameSpace) FindLocalVar(ident string) (v reflect.Value, isConst bool) {
 	if v, ok := ns.LocalVars[ident]; ok {
-		return v
+		return v, false
 	}
-	return noValue
+	if v, ok := ns.LocalConsts[ident]; ok {
+		return v, true
+	}
+	return noValue, false
 }
 
-func (ns *theNameSpace) AddLocalVar(ident string, v reflect.Value) {
+func (ns *theNameSpace) AddLocalVar(ident string, v reflect.Value, isConst bool) {
+	if isConst {
+		ns.LocalConsts[ident] = v
+	}
 	ns.LocalVars[ident] = v
 }
 
 func (ns *theNameSpace) NewBlock() NameSpace {
 	newNs := &theNameSpace{
-		UpperVars: make(map[string]reflect.Value),
-		LocalVars: make(map[string]reflect.Value),
+		UpperVars:   make(map[string]reflect.Value),
+		UpperConsts: make(map[string]reflect.Value),
+		LocalVars:   make(map[string]reflect.Value),
+		LocalConsts: make(map[string]reflect.Value),
 	}
+	// Merge upper vars and local vars as upper vars
 	for k, v := range ns.UpperVars {
 		newNs.UpperVars[k] = v
 	}
 	for k, v := range ns.LocalVars {
 		newNs.UpperVars[k] = v
+	}
+	// Merge upper consts and local vars as upper consts
+	for k, v := range ns.UpperConsts {
+		newNs.UpperConsts[k] = v
+	}
+	for k, v := range ns.LocalConsts {
+		newNs.UpperConsts[k] = v
 	}
 	return newNs
 }
@@ -83,8 +107,10 @@ type machine struct {
 	Packages        map[string]map[string]reflect.Value
 }
 
+type noValueType interface{}
+
 var (
-	noValue = reflect.ValueOf(nil)
+	noValue = reflect.ValueOf(noValueType(nil))
 )
 
 func doSelect(v reflect.Value, sel string) (reflect.Value, error) {
@@ -93,9 +119,9 @@ func doSelect(v reflect.Value, sel string) (reflect.Value, error) {
 }
 
 func (mch *machine) findSelected(ns NameSpace, x, sel string) (reflect.Value, error) {
-	if xv := ns.FindVar(x); xv != noValue {
+	if pv, _ := ns.FindVar(x); pv != noValue {
 		// x is a variable's name
-		return doSelect(reflect.Indirect(xv), sel)
+		return doSelect(pv.Elem(), sel)
 	}
 
 	if funcs, ok := mch.Packages[x]; ok {
@@ -127,10 +153,6 @@ func keywordValue(ident string) reflect.Value {
 
 func leftCompatible(x reflect.Value, op token.Token) bool {
 	return true
-}
-
-func matchType(x, y reflect.Value) (nX, nY reflect.Value, err error) {
-	return x, y, nil
 }
 
 func isFragmentError(errList scanner.ErrorList, lastLine int) bool {
@@ -179,6 +201,9 @@ func New() Machine {
 			},
 			"reflect": map[string]reflect.Value{
 				"TypeOf": reflect.ValueOf(reflect.TypeOf),
+			},
+			"math": map[string]reflect.Value{
+				"Sin": reflect.ValueOf(math.Sin),
 			},
 		},
 	}
