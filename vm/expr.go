@@ -91,7 +91,7 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 			return fromSingleValue(v, nil)
 		}
 
-		if v, _ := ns.FindVar(expr.Name); v != noValue {
+		if v, _ := ns.Find(expr.Name); v != noValue {
 			return fromSingleValue(v.Elem(), nil)
 		}
 

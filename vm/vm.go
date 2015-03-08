@@ -23,11 +23,11 @@ type Machine interface {
 
 type NameSpace interface {
 	// Returns a reflect.Value with pointer to a variable
-	FindVar(ident string) (v reflect.Value, isConst bool)
+	Find(ident string) (v reflect.Value, isConst bool)
 	// Returns a reflect.Value with pointer to a local variable
-	FindLocalVar(ident string) (v reflect.Value, isConst bool)
+	FindLocal(ident string) (v reflect.Value, isConst bool)
 	// Adding a reflect.Value with pointer to a new variable
-	AddLocalVar(ident string, v reflect.Value, isConst bool)
+	AddLocal(ident string, v reflect.Value, isConst bool)
 	// Returns a namespace for a new block
 	NewBlock() NameSpace
 }
@@ -48,8 +48,8 @@ func newNameSpace() NameSpace {
 	}
 }
 
-func (ns *theNameSpace) FindVar(ident string) (v reflect.Value, isConst bool) {
-	if v, isConst := ns.FindLocalVar(ident); v != noValue {
+func (ns *theNameSpace) Find(ident string) (v reflect.Value, isConst bool) {
+	if v, isConst := ns.FindLocal(ident); v != noValue {
 		return v, isConst
 	}
 	if v, ok := ns.UpperVars[ident]; ok {
@@ -61,7 +61,7 @@ func (ns *theNameSpace) FindVar(ident string) (v reflect.Value, isConst bool) {
 	return noValue, false
 }
 
-func (ns *theNameSpace) FindLocalVar(ident string) (v reflect.Value, isConst bool) {
+func (ns *theNameSpace) FindLocal(ident string) (v reflect.Value, isConst bool) {
 	if v, ok := ns.LocalVars[ident]; ok {
 		return v, false
 	}
@@ -71,7 +71,7 @@ func (ns *theNameSpace) FindLocalVar(ident string) (v reflect.Value, isConst boo
 	return noValue, false
 }
 
-func (ns *theNameSpace) AddLocalVar(ident string, v reflect.Value, isConst bool) {
+func (ns *theNameSpace) AddLocal(ident string, v reflect.Value, isConst bool) {
 	if isConst {
 		ns.LocalConsts[ident] = v
 	}
@@ -119,7 +119,7 @@ func doSelect(v reflect.Value, sel string) (reflect.Value, error) {
 }
 
 func (mch *machine) findSelected(ns NameSpace, x, sel string) (reflect.Value, error) {
-	if pv, _ := ns.FindVar(x); pv != noValue {
+	if pv, _ := ns.Find(x); pv != noValue {
 		// x is a variable's name
 		return doSelect(pv.Elem(), sel)
 	}
@@ -149,10 +149,6 @@ func keywordValue(ident string) reflect.Value {
 	default:
 		return noValue
 	}
-}
-
-func leftCompatible(x reflect.Value, op token.Token) bool {
-	return true
 }
 
 func isFragmentError(errList scanner.ErrorList, lastLine int) bool {
