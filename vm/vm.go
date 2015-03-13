@@ -2,13 +2,11 @@ package gsvm
 
 import (
 	"errors"
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/scanner"
 	"go/token"
 	"log"
-	"math"
 	"reflect"
 	"strings"
 )
@@ -22,118 +20,71 @@ type Machine interface {
 }
 
 type NameSpace interface {
-	// Returns a reflect.Value with pointer to a variable
-	Find(ident string) (v reflect.Value, isConst bool)
-	// Returns a reflect.Value with pointer to a local variable
-	FindLocal(ident string) (v reflect.Value, isConst bool)
-	// Adding a reflect.Value with pointer to a new variable
-	AddLocal(ident string, v reflect.Value, isConst bool)
+	// Returns a reflect.Value
+	Find(ident string) (v reflect.Value)
+	// Returns a reflect.Value
+	FindLocal(ident string) (v reflect.Value)
+	// Adding a reflect.Value
+	AddLocal(ident string, v reflect.Value)
 	// Returns a namespace for a new block
 	NewBlock() NameSpace
 }
 
 type theNameSpace struct {
-	UpperVars   map[string]reflect.Value
-	UpperConsts map[string]reflect.Value
-	LocalVars   map[string]reflect.Value
-	LocalConsts map[string]reflect.Value
+	Upper     NameSpace
+	LocalVars map[string]reflect.Value
 }
 
-func newNameSpace() NameSpace {
+func NewNameSpace() NameSpace {
 	return &theNameSpace{
-		UpperVars:   make(map[string]reflect.Value),
-		UpperConsts: make(map[string]reflect.Value),
-		LocalVars:   make(map[string]reflect.Value),
-		LocalConsts: make(map[string]reflect.Value),
+		Upper:     nil,
+		LocalVars: make(map[string]reflect.Value),
 	}
 }
 
-func (ns *theNameSpace) Find(ident string) (v reflect.Value, isConst bool) {
-	if v, isConst := ns.FindLocal(ident); v != noValue {
-		return v, isConst
+func (ns *theNameSpace) Find(ident string) reflect.Value {
+	if v := ns.FindLocal(ident); v != NoValue {
+		return v
 	}
-	if v, ok := ns.UpperVars[ident]; ok {
-		return v, false
+
+	if ns.Upper != nil {
+		return ns.Upper.Find(ident)
 	}
-	if v, ok := ns.UpperConsts[ident]; ok {
-		return v, true
-	}
-	return noValue, false
+
+	return NoValue
 }
 
-func (ns *theNameSpace) FindLocal(ident string) (v reflect.Value, isConst bool) {
+func (ns *theNameSpace) FindLocal(ident string) reflect.Value {
 	if v, ok := ns.LocalVars[ident]; ok {
-		return v, false
+		return v
 	}
-	if v, ok := ns.LocalConsts[ident]; ok {
-		return v, true
-	}
-	return noValue, false
+	return NoValue
 }
 
-func (ns *theNameSpace) AddLocal(ident string, v reflect.Value, isConst bool) {
-	if isConst {
-		ns.LocalConsts[ident] = v
-	}
+func (ns *theNameSpace) AddLocal(ident string, v reflect.Value) {
 	ns.LocalVars[ident] = v
 }
 
 func (ns *theNameSpace) NewBlock() NameSpace {
-	newNs := &theNameSpace{
-		UpperVars:   make(map[string]reflect.Value),
-		UpperConsts: make(map[string]reflect.Value),
-		LocalVars:   make(map[string]reflect.Value),
-		LocalConsts: make(map[string]reflect.Value),
+	return NewNameSpaceBlock(ns)
+}
+
+func NewNameSpaceBlock(ns NameSpace) NameSpace {
+	return &theNameSpace{
+		Upper:     ns,
+		LocalVars: make(map[string]reflect.Value),
 	}
-	// Merge upper vars and local vars as upper vars
-	for k, v := range ns.UpperVars {
-		newNs.UpperVars[k] = v
-	}
-	for k, v := range ns.LocalVars {
-		newNs.UpperVars[k] = v
-	}
-	// Merge upper consts and local vars as upper consts
-	for k, v := range ns.UpperConsts {
-		newNs.UpperConsts[k] = v
-	}
-	for k, v := range ns.LocalConsts {
-		newNs.UpperConsts[k] = v
-	}
-	return newNs
 }
 
 type machine struct {
 	GlobalNameSpace NameSpace
-	Packages        map[string]map[string]reflect.Value
 }
 
 type noValueType interface{}
 
 var (
-	noValue = reflect.ValueOf(noValueType(nil))
+	NoValue = reflect.ValueOf(noValueType(nil))
 )
-
-func doSelect(v reflect.Value, sel string) (reflect.Value, error) {
-	// TODO
-	return noValue, nil
-}
-
-func (mch *machine) findSelected(ns NameSpace, x, sel string) (reflect.Value, error) {
-	if pv, _ := ns.Find(x); pv != noValue {
-		// x is a variable's name
-		return doSelect(pv.Elem(), sel)
-	}
-
-	if funcs, ok := mch.Packages[x]; ok {
-		// x is a package name
-		if f, ok := funcs[sel]; ok {
-			return f, nil
-		}
-		return noValue, fmt.Errorf("Undefined: %s.%s", x, sel)
-	}
-
-	return noValue, fmt.Errorf("Undefined: %s", x)
-}
 
 var (
 	trueValue  = reflect.ValueOf(true)
@@ -147,7 +98,7 @@ func keywordValue(ident string) reflect.Value {
 	case "false":
 		return falseValue
 	default:
-		return noValue
+		return NoValue
 	}
 }
 
@@ -187,20 +138,39 @@ func (mch *machine) Run(line string) error {
 	return nil
 }
 
-func New() Machine {
+type Package map[string]reflect.Value
+
+var PackageType = reflect.TypeOf(Package(nil))
+
+func New(initNS NameSpace) Machine {
 	return &machine{
-		GlobalNameSpace: newNameSpace(),
-		Packages: map[string]map[string]reflect.Value{
-			"fmt": map[string]reflect.Value{
-				"Println": reflect.ValueOf(fmt.Println),
-				"Print":   reflect.ValueOf(fmt.Print),
-			},
-			"reflect": map[string]reflect.Value{
-				"TypeOf": reflect.ValueOf(reflect.TypeOf),
-			},
-			"math": map[string]reflect.Value{
-				"Sin": reflect.ValueOf(math.Sin),
-			},
-		},
+		GlobalNameSpace: initNS.NewBlock(),
 	}
+}
+
+type PackageNameSpace struct {
+	Packages map[string]Package
+}
+
+func (p *PackageNameSpace) Find(ident string) (v reflect.Value) {
+	return p.FindLocal(ident)
+}
+func (p *PackageNameSpace) FindLocal(ident string) (v reflect.Value) {
+	if pkg, ok := p.Packages[ident]; ok {
+		return reflect.ValueOf(pkg)
+	}
+
+	if pkg, ok := p.Packages[""]; ok {
+		if v, ok := pkg[ident]; ok {
+			return v
+		}
+	}
+
+	return NoValue
+}
+func (p *PackageNameSpace) AddLocal(ident string, v reflect.Value) {
+	panic("not implemented")
+}
+func (p *PackageNameSpace) NewBlock() NameSpace {
+	return NewNameSpaceBlock(p)
 }

@@ -43,12 +43,11 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			hasNew := false
 			for _, l := range st.Lhs {
 				ident := l.(*ast.Ident)
-				v, isConst := ns.FindLocal(ident.Name)
-				if isConst {
-					return cannotAssignToErr(ident.Name)
-				}
-				if v == noValue {
+				v := ns.FindLocal(ident.Name)
+				if v == NoValue {
 					hasNew = true
+				} else if v.Type() == ConstValueType {
+					return cannotAssignToErr(ident.Name)
 				}
 			}
 			if !hasNew {
@@ -74,17 +73,17 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			// Define and assign
 			for i, l := range st.Lhs {
 				lIdent := l.(*ast.Ident)
-				pv, _ := ns.FindLocal(lIdent.Name)
+				v := ns.FindLocal(lIdent.Name)
 				vl := values[i]
-				if pv == noValue {
+				if v == NoValue {
 					vl = removeBasicLit(vl)
-					pv = reflect.New(vl.Type())
-					ns.AddLocal(lIdent.Name, pv, false)
+					v = reflect.New(vl.Type()).Elem()
+					ns.AddLocal(lIdent.Name, v)
 				} else {
-					vl = matchDestType(vl, pv.Elem().Type())
+					vl = matchDestType(vl, v.Type())
 				}
 
-				if err := assignTo(pv.Elem(), vl); err != nil {
+				if err := assignTo(v, vl); err != nil {
 					return err
 				}
 			}
@@ -234,7 +233,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				}
 
 				for i, name := range spec.Names {
-					if pv, _ := ns.FindLocal(name.Name); pv != noValue {
+					if ns.FindLocal(name.Name) != NoValue {
 						return redeclareVarErr(name.Name)
 					}
 					var pv reflect.Value
@@ -263,7 +262,11 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 					if values != nil {
 						pv.Elem().Set(vl)
 					}
-					ns.AddLocal(name.Name, pv, isConst)
+					if isConst {
+						ns.AddLocal(name.Name, ToConstant(pv.Elem()))
+					} else {
+						ns.AddLocal(name.Name, pv.Elem())
+					}
 				}
 			}
 			return nil

@@ -19,14 +19,20 @@ func TestUnaryExpr(t *testing.T) {
 
 	assert.NoError(t, mch.Run(`fmt.Println(!true)`))
 	assert.NoError(t, mch.Run(`i := !true`))
-	i, _ := mch.GlobalNameSpace.FindLocalVar("i")
-	assert.NotEquals(t, "i", i, noValue)
-	assert.Equals(t, "i.Type()", i.Type(), reflect.TypeOf(new(bool)))
-	assert.Equals(t, "i", i.Elem().Interface(), false)
+	i := mch.GlobalNameSpace.FindLocal("i")
+	assert.NotEquals(t, "i", i, NoValue)
+	assert.Equals(t, "i.Type()", i.Type(), reflect.TypeOf(new(bool)).Elem())
+	assert.Equals(t, "i", i.Interface(), false)
 }
 
 func TestFuncCall(t *testing.T) {
 	mch := newMachine()
 	assert.NoError(t, mch.Run(`const n = 500000000`))
 	assert.NoError(t, mch.Run(`fmt.Println(math.Sin(n))`))
+	
+	assert.NoError(t, mch.Run(`i := fmt.Sprint(reflect.ValueOf(10).Type())`))
+	i := mch.GlobalNameSpace.FindLocal("i")
+	if assert.NotEquals(t, "i", i, NoValue) {
+		assert.Equals(t, "i", i.Interface(), "int")
+	}
 }

@@ -1,47 +1,79 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"log"
+	"math"
+	"math/rand"
 	"os"
 
-	"github.com/daviddengcn/go-shell/vm"
+	"github.com/daviddengcn/go-ljson-conf"
+	"github.com/daviddengcn/go-shell/pkg"
+	"github.com/daviddengcn/go-villa"
 )
 
-var (
-	PS = "$ "
+func genFilename() villa.Path {
+	if true {
+		return villa.Path("/tmp")
+	}
+	dir := villa.Path(os.TempDir())
+	for {
+		base := villa.Path(fmt.Sprintf("go-shell-%08x", rand.Int63n(math.MaxInt64)))
+		fn := dir.Join(base)
+		if !fn.Exists() {
+			return fn
+		}
+	}
+}
+
+const mainGoSrc = `package main
+
+import(
+	"github.com/daviddengcn/go-shell/shell"
 )
 
 func main() {
-	fmt.Println("go-shell 1.0")
-	vm := gsvm.New()
+	shell.Run(&gImportedPkgs)
+}
+`
 
-	in := bufio.NewReader(os.Stdin)
+func main() {
+	conf, _ := ljconf.Load("shell.json")
+	imports := conf.Object("import", nil)
+	importList := make([]pkg.ImportAs, 0, len(imports))
+	for p, a := range imports {
+		importList = append(importList, pkg.ImportAs{Alias: fmt.Sprint(a), Path: p})
+	}
 
-	buffered := ""
+	base := genFilename()
+	fmt.Println("base", base)
+	if err := base.MkdirAll(0755); err != nil {
+		log.Fatalf("Mkdirs failed: %v", err)
+	}
+	fnMainGo := base.Join("main.go")
+	if err := ioutil.WriteFile(fnMainGo.S(), []byte(mainGoSrc), 0644); err != nil {
+		log.Fatalf("WriteFile to %s failed: %v", fnMainGo, err)
+	}
 
-	for {
-		if buffered == "" {
-			fmt.Print(PS)
-		}
-		line, err := in.ReadString('\n')
+	fnPkgGo := base.Join("pkg.go")
+	func() {
+		f, err := fnPkgGo.Create()
 		if err != nil {
-			fmt.Println()
-			if err == io.EOF {
-				return
-			}
-			log.Fatalf("Read error: %v", err)
+			log.Fatalf("Create file %s failed: %v", fnPkgGo, err)
 		}
-		err = vm.Run(buffered + line)
-		if err == gsvm.FragmentErr {
-			buffered += "\n" + line
-		} else {
-			if err != nil {
-				log.Println(err)
-			}
-			buffered = ""
+		defer f.Close()
+
+		if err := pkg.GenSource(importList, f); err != nil {
+			log.Fatalf("GenSource failed: %v", err)
 		}
+	}()
+
+	cmd := villa.Path("go").Command("run", fnMainGo.S(), fnPkgGo.S())
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	if err := cmd.Run(); err != nil {
+		log.Fatalf("go run failed: %v", err)
 	}
 }

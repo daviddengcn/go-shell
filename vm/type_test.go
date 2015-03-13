@@ -1,6 +1,8 @@
 package gsvm
 
 import (
+	"fmt"
+	"math"
 	"reflect"
 	"testing"
 
@@ -8,54 +10,65 @@ import (
 )
 
 func newMachine() *machine {
-	return New().(*machine)
+	return New(&PackageNameSpace{Packages: map[string]Package{
+		"fmt": Package{
+			"Println": reflect.ValueOf(fmt.Println),
+			"Sprint": reflect.ValueOf(fmt.Sprint),
+		},
+		"math": Package{
+			"Sin": reflect.ValueOf(math.Sin),
+		},
+		"reflect": Package{
+			"ValueOf": reflect.ValueOf(reflect.ValueOf),
+		},
+	}}).(*machine)
 }
 
 func TestTypeLiteralConvert(t *testing.T) {
 	mch := newMachine()
 
 	if assert.NoError(t, mch.Run(`var j = 1.5`)) {
-		j, _ := mch.GlobalNameSpace.FindLocalVar("j")
-		if assert.NotEquals(t, "j", j, noValue) {
-			assert.Equals(t, "j.Type()", j.Type(), reflect.TypeOf(new(float64)))
-			assert.Equals(t, "j", j.Elem().Interface(), 1.5)
+		j := mch.GlobalNameSpace.FindLocal("j")
+		if assert.NotEquals(t, "j", j, NoValue) {
+			assert.Equals(t, "j.Type()", j.Type(), reflect.TypeOf(new(float64)).Elem())
+			assert.Equals(t, "j", j.Interface(), 1.5)
 		}
 	}
 
 	if assert.NoError(t, mch.Run(`var k float32`)) {
-		k, _ := mch.GlobalNameSpace.FindLocalVar("k")
-		if assert.NotEquals(t, "k", k, noValue) {
-			assert.Equals(t, "k.Type()", k.Type(), reflect.TypeOf(new(float32)))
-			assert.Equals(t, "k", k.Elem().Interface(), float32(0))
+		k := mch.GlobalNameSpace.FindLocal("k")
+		if assert.NotEquals(t, "k", k, NoValue) {
+			assert.Equals(t, "k.Type()", k.Type(), reflect.TypeOf(new(float32)).Elem())
+			assert.Equals(t, "k", k.Interface(), float32(0))
 		}
 	}
 
 	if assert.NoError(t, mch.Run(`var l complex128 = 1`)) {
-		l, _ := mch.GlobalNameSpace.FindLocalVar("l")
-		if assert.NotEquals(t, "l", l, noValue) {
-			assert.Equals(t, "l.Type()", l.Type(), reflect.TypeOf(new(complex128)))
-			assert.Equals(t, "l", l.Elem().Interface(), complex(1, 0))
+		l := mch.GlobalNameSpace.FindLocal("l")
+		if assert.NotEquals(t, "l", l, NoValue) {
+			assert.Equals(t, "l.Type()", l.Type(), reflect.TypeOf(new(complex128)).Elem())
+			assert.Equals(t, "l", l.Interface(), complex(1, 0))
 		}
 	}
 
 	if assert.NoError(t, mch.Run(`i, k := 1, 2`)) {
-		i, _ := mch.GlobalNameSpace.FindLocalVar("i")
-		if assert.NotEquals(t, "i", i, noValue) {
-			assert.Equals(t, "i.Type()", i.Type(), reflect.TypeOf(new(int)))
-			assert.Equals(t, "i", i.Elem().Interface(), 1)
+		i := mch.GlobalNameSpace.FindLocal("i")
+		if assert.NotEquals(t, "i", i, NoValue) {
+			assert.Equals(t, "i.Type()", i.Type(), reflect.TypeOf(new(int)).Elem())
+			assert.Equals(t, "i", i.Interface(), 1)
 		}
-		k, _ := mch.GlobalNameSpace.FindLocalVar("k")
-		if assert.NotEquals(t, "k", k, noValue) {
-			assert.Equals(t, "k.Type()", k.Type(), reflect.TypeOf(new(float32)))
-			assert.Equals(t, "k", k.Elem().Interface(), float32(2))
+		k := mch.GlobalNameSpace.FindLocal("k")
+		if assert.NotEquals(t, "k", k, NoValue) {
+			assert.Equals(t, "k.Type()", k.Type(), reflect.TypeOf(new(float32)).Elem())
+			assert.Equals(t, "k", k.Interface(), float32(2))
 		}
 	}
 
 	if assert.NoError(t, mch.Run(`l = 3`)) {
-		l, _ := mch.GlobalNameSpace.FindLocalVar("l")
-		if assert.NotEquals(t, "l", l, noValue) {
-			assert.Equals(t, "l.Type()", l.Type(), reflect.TypeOf(new(complex128)))
-			assert.Equals(t, "l", l.Elem().Interface(), complex(3, 0))
+		l := mch.GlobalNameSpace.FindLocal("l")
+		if assert.NotEquals(t, "l", l, NoValue) {
+			assert.Equals(t, "l.Type()", l.Type(), reflect.TypeOf(new(complex128)).Elem())
+			assert.Equals(t, "l", l.Interface(), complex(3, 0))
 		}
 	}
 }
@@ -72,12 +85,12 @@ func TestTypeConversion(t *testing.T) {
 	assert.NoError(t, mch.Run(`i := 10`))
 	assert.NoError(t, mch.Run(`j := int64(i)`))
 
-	i, _ := mch.GlobalNameSpace.FindLocalVar("i")
-	if assert.NotEquals(t, "i", i, noValue) {
-		assert.Equals(t, "i.Type()", i.Type(), reflect.TypeOf(new(int)))
+	i := mch.GlobalNameSpace.FindLocal("i")
+	if assert.NotEquals(t, "i", i, NoValue) {
+		assert.Equals(t, "i.Type()", i.Type(), reflect.TypeOf(new(int)).Elem())
 	}
-	j, _ := mch.GlobalNameSpace.FindLocalVar("j")
-	if assert.NotEquals(t, "j", j, noValue) {
-		assert.Equals(t, "j.Type()", j.Type(), reflect.TypeOf(new(int64)))
+	j := mch.GlobalNameSpace.FindLocal("j")
+	if assert.NotEquals(t, "j", j, NoValue) {
+		assert.Equals(t, "j.Type()", j.Type(), reflect.TypeOf(new(int64)).Elem())
 	}
 }

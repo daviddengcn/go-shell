@@ -66,6 +66,10 @@ func tooManyArgumentsErr(fn string) error {
 	return fmt.Errorf("too many arguments in call to %s", fn)
 }
 
+func undefinedErr(s string) error {
+	return fmt.Errorf("undefined: %v", s)
+}
+
 var (
 	noNewVarsErr = fmt.Errorf("no new on left side of :=")
 )

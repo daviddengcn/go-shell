@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
-	"log"
 	"reflect"
 	"strconv"
 	"unicode/utf8"
@@ -12,10 +11,10 @@ import (
 
 func checkSingleValue(vls []reflect.Value, err error) (reflect.Value, error) {
 	if err != nil {
-		return noValue, err
+		return NoValue, err
 	}
 	if len(vls) != 1 {
-		return noValue, fmt.Errorf("multiple-value(%d) in single-value context", len(vls))
+		return NoValue, fmt.Errorf("multiple-value(%d) in single-value context", len(vls))
 	}
 	return vls[0], nil
 }
@@ -87,12 +86,12 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		}
 
 	case *ast.Ident:
-		if v := keywordValue(expr.Name); v != noValue {
+		if v := keywordValue(expr.Name); v != NoValue {
 			return fromSingleValue(v, nil)
 		}
 
-		if v, _ := ns.Find(expr.Name); v != noValue {
-			return fromSingleValue(v.Elem(), nil)
+		if v := ns.Find(expr.Name); v != NoValue {
+			return fromSingleValue(v, nil)
 		}
 
 		if tp, err := mch.evalType(expr); err == nil {
@@ -160,7 +159,7 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 
 		for i := 0; i < mn; i++ {
 			tp := fnType.In(i)
-			args[i] = matchDestType(args[i], tp)
+			args[i] = removeBasicLit(matchDestType(args[i], tp))
 			if !args[i].Type().AssignableTo(tp) {
 				return nil, cannotUseAsInArgumentErr(args[i], tp, fn.String())
 			}
@@ -169,7 +168,7 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		if fn.Type().IsVariadic() {
 			tp := fnType.In(fnType.NumIn() - 1).Elem()
 			for i := mn; i < len(args); i++ {
-				args[i] = matchDestType(args[i], tp)
+				args[i] = removeBasicLit(matchDestType(args[i], tp))
 				if !args[i].Type().AssignableTo(tp) {
 					return nil, cannotUseAsInArgumentErr(args[i], tp, fn.String())
 				}
@@ -179,14 +178,39 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		return fn.Call(args), nil
 
 	case *ast.SelectorExpr:
-		switch x := expr.X.(type) {
-		case *ast.Ident:
-			return fromSingleValue(mch.findSelected(ns, x.Name, expr.Sel.Name))
-		default:
-			log.Println("Unknown SelectorExpr X type")
-			ast.Print(token.NewFileSet(), x)
-			return []reflect.Value{reflect.ValueOf(expr)}, nil
+		//		ast.Print(token.NewFileSet(), expr)
+		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
+		if err != nil {
+			return nil, err
 		}
+
+		switch x.Type() {
+		case ConstValueType:
+		case TypeValueType:
+		case PackageType:
+			x := x.Interface().(Package)
+			if vl, ok := x[expr.Sel.Name]; ok {
+				return singleValue(vl)
+			}
+			return nil, undefinedErr(fmt.Sprintf("%v.%v", expr.X, expr.Sel.Name))
+		default:
+		}
+
+		for x.Kind() == reflect.Ptr {
+			x = x.Elem()
+		}
+		
+		if x.Kind() != reflect.Struct {
+			return nil, fmt.Errorf("no-struct")
+		}
+		
+		if vl := x.FieldByName(expr.Sel.Name); vl.IsValid() {
+			return singleValue(vl)
+		}
+		if vl := x.MethodByName(expr.Sel.Name); vl.IsValid() {
+			return singleValue(vl)
+		}
+		return nil, fmt.Errorf("nofound")
 
 	case *ast.UnaryExpr:
 		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))

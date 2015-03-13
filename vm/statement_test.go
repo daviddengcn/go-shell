@@ -10,11 +10,11 @@ func TestForStatement(t *testing.T) {
 	mch := newMachine()
 
 	assert.NoError(t, mch.Run(`var sum, j int`))
-	psum, _ := mch.GlobalNameSpace.FindLocalVar("sum")
-	assert.NotEquals(t, "psum", psum, noValue)
+	sum := mch.GlobalNameSpace.FindLocal("sum")
+	assert.NotEquals(t, "sum", sum, NoValue)
 
-	pj, _ := mch.GlobalNameSpace.FindLocalVar("j")
-	assert.NotEquals(t, "pj", pj, noValue)
+	j := mch.GlobalNameSpace.FindLocal("j")
+	assert.NotEquals(t, "j", j, NoValue)
 
 	if assert.NoError(t, mch.Run(`sum = 0
 j = 10
@@ -22,8 +22,8 @@ for i := 0; i < 10; i ++ {
 	sum += i
 	j--
 }`)) {
-		assert.Equals(t, "sum", psum.Elem().Interface(), 45)
-		assert.Equals(t, "j", pj.Elem().Interface(), 0)
+		assert.Equals(t, "sum", sum.Interface(), 45)
+		assert.Equals(t, "j", j.Interface(), 0)
 	}
 
 	if assert.NoError(t, mch.Run(`sum, j = 0, 10
@@ -36,8 +36,8 @@ for i := 0; i < 10; i ++ {
 		fmt.Println(i)
 	}
 }`)) {
-		assert.Equals(t, "sum", psum.Elem().Interface(), 15)
-		assert.Equals(t, "j", pj.Elem().Interface(), 4)
+		assert.Equals(t, "sum", sum.Interface(), 15)
+		assert.Equals(t, "j", j.Interface(), 4)
 	}
 }
 
@@ -45,9 +45,9 @@ func TestOpAssignStatement(t *testing.T) {
 	mch := newMachine()
 
 	assert.NoError(t, mch.Run(`s := "abc"`))
-	ps, _ := mch.GlobalNameSpace.FindLocalVar("s")
-	assert.NotEquals(t, "ps", ps, noValue)
-	assert.Equals(t, "s", ps.Elem().Interface(), "abc")
+	s := mch.GlobalNameSpace.FindLocal("s")
+	assert.NotEquals(t, "s", s, NoValue)
+	assert.Equals(t, "s", s.Interface(), "abc")
 
 	assert.NoError(t, mch.Run(`s += "def"`))
 }
@@ -60,6 +60,6 @@ func TestSwitchStatment(t *testing.T) {
 	case 2:
 		s = "two"
 }`))
-	ps, _ := mch.GlobalNameSpace.FindLocalVar("s")
-	assert.Equals(t, "s", ps.Elem().Interface(), "two")
+	s := mch.GlobalNameSpace.FindLocal("s")
+	assert.Equals(t, "s", s.Interface(), "two")
 }
