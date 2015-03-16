@@ -9,7 +9,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"log"
+	"go/build"
 	
 	"github.com/daviddengcn/go-villa"
 	gosl "github.com/daviddengcn/gosl/builtin"
@@ -55,6 +55,7 @@ func GenSource(imports []ImportAs, out io.Writer) error {
 	
 	GoRootSrc := GoRoot.Join("src")
 	fmt.Fprintf(out, "var gImportedPkgs = gsvm.PackageNameSpace{Packages: map[string]gsvm.Package{\n")
+	pkgSrcs := make(map[string]*villa.ByteSlice)
 	for _, ia := range imports {
 		if ia.Alias == "_" {
 			// side-effect only import
@@ -63,60 +64,57 @@ func GenSource(imports []ImportAs, out io.Writer) error {
 		
 		dir := GoRootSrc.Join(ia.Path)
 		fmt.Println("import", ia.Alias, dir)
-
-		//pkgInfo, _ := build.Import(ia.Path, "", build.FindOnly)
-		//fmt.Printf("%+v\n", pkgInfo)
 		
 		fs := token.NewFileSet()
-		pkgs, err := parser.ParseDir(fs, dir.S(), func(fi os.FileInfo) bool{
-			return !strings.HasSuffix(fi.Name(), "_test.go")
-		}, 0)
-		if err != nil {
-			log.Fatalf("Parsing %s failed: %v", ia.Path, err)
-		}
-		
-		if len(pkgs) > 1 {
-			log.Fatalf("More than one packages defined in: %s", ia.Path)
-		}
-		
-		for pkgName, p := range pkgs {
-			if ia.Alias == "." {
-				pkgName = ""
-			} else  if ia.Alias != "" {
+		pkgInfo, _ := build.Import(ia.Path, "", 0)
+		for _, goFile := range pkgInfo.GoFiles {
+			fn := dir.Join(goFile)
+			fmt.Println("fn ", fn)
+			f, err := parser.ParseFile(fs, fn.S(), nil, 0)
+			if err != nil {
+				villa.Fatalf("Parse %s failed: %v", fn.S(), err)
+			}
+			pkgName := f.Name.Name
+			if ia.Alias != "" {
 				pkgName = ia.Alias
 			}
-			fmt.Fprintf(out, "  %s: gsvm.Package{\n", strconv.Quote(pkgName))
-			
-			for _, f := range p.Files {
-				for objName, obj := range f.Scope.Objects {
-					if !isCaptilized(objName) {
+			if _, ok := pkgSrcs[pkgName]; !ok {
+				// a new package
+				pkgSrcs[pkgName] = villa.NewPByteSlice(nil)
+			}
+			for objName, obj := range f.Scope.Objects {
+				if !isCaptilized(objName) {
+					continue
+				}
+				
+				refName := objName
+				if pkgName != "" {
+					refName = pkgName + "." + objName
+				}
+				
+				switch obj.Kind {
+				case ast.Con:
+					if objName == "MaxUint64" {
+						// a Go bug
 						continue
 					}
-					
-					refName := pkgName
-					if pkgName != "" {
-						refName = pkgName + "." + objName
-					}
-					
-					switch obj.Kind {
-					case ast.Con:
-						if objName == "MaxUint64" {
-							// a Go bug
-							continue
-						}
-						fmt.Fprintf(out, "    %s: reflect.ValueOf(%s),\n", strconv.Quote(objName), refName)
-					case ast.Typ:
-						fmt.Fprintf(out, "    %s: reflect.ValueOf(gsvm.TypeValue{reflect.TypeOf((*%s)(nil)).Elem()}),\n",
-							strconv.Quote(objName), refName)
-					case ast.Var:
-						fmt.Fprintf(out, "    %s: reflect.ValueOf(&%s).Elem(),\n", strconv.Quote(objName), refName)
-					case ast.Fun:
-						fmt.Fprintf(out, "    %s: reflect.ValueOf(%s),\n", strconv.Quote(objName), refName)
-					}
+					fmt.Fprintf(pkgSrcs[pkgName], "    %s: reflect.ValueOf(%s),\n", strconv.Quote(objName), refName)
+				case ast.Typ:
+					fmt.Fprintf(pkgSrcs[pkgName], "    %s: reflect.ValueOf(gsvm.TypeValue{reflect.TypeOf((*%s)(nil)).Elem()}),\n",
+						strconv.Quote(objName), refName)
+				case ast.Var:
+					fmt.Fprintf(pkgSrcs[pkgName], "    %s: reflect.ValueOf(&%s).Elem(),\n", strconv.Quote(objName), refName)
+				case ast.Fun:
+					fmt.Fprintf(pkgSrcs[pkgName], "    %s: reflect.ValueOf(%s),\n", strconv.Quote(objName), refName)
 				}
 			}
-			fmt.Fprintf(out, "  },\n")
 		}
+	}
+	
+	for pkgName, src := range pkgSrcs {
+		fmt.Fprintf(out, "    %s: gsvm.Package{\n", strconv.Quote(pkgName))
+		fmt.Fprintf(out, string(*src))
+		fmt.Fprintln(out, "    },")
 	}
 	fmt.Fprintf(out, "}}\n")
 
