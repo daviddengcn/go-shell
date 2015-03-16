@@ -62,4 +62,15 @@ func TestSwitchStatment(t *testing.T) {
 }`))
 	s := mch.GlobalNameSpace.FindLocal("s")
 	assert.Equals(t, "s", s.Interface(), "two")
+	
+	// check execution of default clause
+	assert.NoError(t, mch.Run(`j := 3
+switch {
+	case j == 2:
+		j = 4
+	default:
+		j = 5
+}`))
+	j := mch.GlobalNameSpace.FindLocal("j")
+	assert.Equals(t, "j", j.Interface(), 5)
 }

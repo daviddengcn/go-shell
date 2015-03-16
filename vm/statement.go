@@ -425,10 +425,10 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				return err
 			}
 		}
-
+		
 		for _, el := range st.Body.List {
 			cc := el.(*ast.CaseClause)
-			matched := false
+			matched := len(cc.List) == 0
 			for _, el := range cc.List {
 				vl, err := checkSingleValue(mch.evalExpr(blkNs, el))
 				if err != nil {
@@ -464,6 +464,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			}
 			break
 		}
+		
 		return nil
 	}
 
