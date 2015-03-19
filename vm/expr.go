@@ -56,6 +56,92 @@ func valueEqual(a, b reflect.Value) (bool, error) {
 	return a.Interface() == b.Interface(), nil
 }
 
+func asInteger(vl reflect.Value) (int, error) {
+	return int(vl.Int()), nil
+}
+
+type builtinFuncImpl func(mch *machine, ns NameSpace, args []ast.Expr) ([]reflect.Value, error)
+
+var gBuiltinFuncs map[string]builtinFuncImpl
+
+func init() {
+	gBuiltinFuncs = map[string]builtinFuncImpl {
+		"make": func(mch *machine, ns NameSpace, args []ast.Expr) ([]reflect.Value, error) {
+			if len(args) == 0 {
+				return nil, missingArgumentToFuncErr("make")
+			}
+			tp, err := mch.evalType(ns, args[0])
+			if err != nil {
+				return nil, err
+			}
+			
+			switch tp.Kind() {
+			case reflect.Slice:
+				if len(args) > 3 {
+					return nil, tooManyArgumentsErr("make")
+				}
+				l, err := checkSingleValue(mch.evalExpr(ns, args[1]))
+				if err != nil {
+					return nil, err
+				}
+				
+				ln, err := asInteger(l)
+				if err != nil {
+					return nil, err
+				}
+				cp := ln
+				if len(args) == 3 {
+					c, err := checkSingleValue(mch.evalExpr(ns, args[2]))
+					if err != nil {
+						return nil, err
+					}
+					
+					cp, err = asInteger(c)
+					if err != nil {
+						return nil, err
+					}
+				}
+				
+				return singleValue(reflect.MakeSlice(tp, ln, cp))
+			// TODO make(map)
+			default:
+				return nil, cannotMakeTypeErr(tp)
+			}
+			return nil, nil
+		},
+		"len": func(mch *machine, ns NameSpace, args []ast.Expr) ([]reflect.Value, error) {
+			if len(args) < 1 {
+				return nil, missingArgumentToFuncErr("len")
+			}
+			if len(args) > 1 {
+				return nil, tooManyArgumentsErr("len")
+			}
+			
+			vl, err := checkSingleValue(mch.evalExpr(ns, args[0]))
+			if err != nil {
+				return nil, err
+			}
+			
+			switch vl.Kind() {
+			case reflect.Array, reflect.Chan, reflect.Map, reflect.Slice, reflect.String:
+				return valueToResult(intLiteral(vl.Len()))
+			default:
+				return nil, invalidArgumentForFuncErr(vl, "len")
+			}
+		},
+	}
+}
+
+func builtinFunc(fun ast.Expr) string {
+	switch fun := fun.(type) {
+	case *ast.Ident:
+		if _, ok := gBuiltinFuncs[fun.Name]; ok {
+			return fun.Name
+		}
+	}
+	return ""
+}
+
 // Returns slice of values themselves not the pointers.
 func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, error) {
 	switch expr := expr.(type) {
@@ -94,15 +180,22 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 			return fromSingleValue(v, nil)
 		}
 
-		if tp, err := mch.evalType(expr); err == nil {
+		if tp, err := mch.evalType(ns, expr); err == nil {
 			return singleValue(reflect.ValueOf(TypeValue{tp}))
 		}
 
-		return nil, fmt.Errorf("Unknown Ident %v", expr.Name)
+		return nil, undefinedErr(expr.Name)
 
 	case *ast.CallExpr:
 		fn, err := checkSingleValue(mch.evalExpr(ns, expr.Fun))
 		if err != nil {
+			if _, ok := err.(UndefinedError); ok {
+				fun := builtinFunc(expr.Fun)
+				if fun == "" {
+					return nil, err
+				}
+				return gBuiltinFuncs[fun](mch, ns, expr.Args)
+			}
 			return nil, err
 		}
 		fnType := fn.Type()
@@ -113,7 +206,7 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 				return nil, tooManyArgumentsToConversionErr(tp)
 			}
 			if len(expr.Args) < 1 {
-				return nil, missingArugmentToConversionErr(tp)
+				return nil, missingArgumentToConversionErr(tp)
 			}
 			v, err := checkSingleValue(mch.evalExpr(ns, expr.Args[0]))
 			if err != nil {
@@ -441,6 +534,20 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		}
 
 		return nil, invalidOperationErr(expr.Op.String(), x.Type())
+		
+	case *ast.IndexExpr:
+		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
+		if err != nil {
+			return nil, err
+		}
+		
+		index, err := checkSingleValue(mch.evalExpr(ns, expr.Index))
+		i, err := asInteger(index)
+		if err != nil {
+			return nil, err
+		}
+		
+		return valueToResult(IndexType{x, i})
 	}
 	ast.Print(token.NewFileSet(), expr)
 	return nil, fmt.Errorf("Unknown expr type")

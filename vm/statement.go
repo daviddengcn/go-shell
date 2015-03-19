@@ -61,6 +61,11 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				if err != nil {
 					return err
 				}
+				
+				if rV.Type().Implements(EvalHandlerType) {
+					rV = rV.Interface().(EvalHandler).Eval()
+				}
+				
 				if len(st.Rhs) > 1 && rV.CanAddr() {
 					// Make a copy of lvalue for parallel assignments
 					tmp := reflect.New(rV.Type())
@@ -108,6 +113,15 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				if err != nil {
 					return err
 				}
+				
+				if v.Type().Implements(AssignHandlerType) {
+					ah := v.Interface().(AssignHandler)
+					if err := ah.Assign(values[i]); err != nil {
+						return err
+					}
+					continue
+				}
+				
 				if !v.CanSet() {
 					return cannotAssignToErr(v.String())
 				}
@@ -244,7 +258,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 					}
 					if spec.Type != nil {
 						var err error
-						if tp, err = mch.evalType(spec.Type); err != nil {
+						if tp, err = mch.evalType(ns, spec.Type); err != nil {
 							return err
 						}
 						if values != nil {

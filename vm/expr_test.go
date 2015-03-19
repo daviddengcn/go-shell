@@ -36,3 +36,13 @@ func TestFuncCall(t *testing.T) {
 		assert.Equals(t, "i", i.Interface(), "int")
 	}
 }
+
+func TestMake(t *testing.T) {
+	mch := newMachine()
+	assert.NoError(t, mch.Run(`s := make([]string, 3)
+l := len(s)`))
+	l := mch.GlobalNameSpace.FindLocal("l")
+	if assert.NotEquals(t, "l", l, NoValue) {
+		assert.Equals(t, "l", l.Interface(), 3)
+	}
+}

@@ -88,10 +88,14 @@ func matchType(x, y reflect.Value) (nX, nY reflect.Value, err error) {
 // matchDestType tries match vl with dstTp and return converted value. If
 // fail to match, return vl.
 func matchDestType(vl reflect.Value, dstTp reflect.Type) reflect.Value {
+	if vl.Type().Implements(EvalHandlerType) {
+		return matchDestType(vl.Interface().(EvalHandler).Eval(), dstTp)
+	}
+	
 	if vl.Type() == ConstValueType {
 		vl = vl.Field(0).Interface().(reflect.Value)
 	}
-
+	
 	if vl.Type() == dstTp {
 		return vl
 	}
@@ -203,7 +207,41 @@ type TypeValue struct {
 
 var TypeValueType = reflect.TypeOf(TypeValue{})
 
-func (mch *machine) evalType(expr ast.Expr) (reflect.Type, error) {
+type AssignHandler interface {
+	Assign(v reflect.Value) error
+}
+
+var AssignHandlerType = reflect.TypeOf((*AssignHandler)(nil)).Elem()
+
+type EvalHandler interface {
+	Eval() reflect.Value
+}
+var EvalHandlerType = reflect.TypeOf((*EvalHandler)(nil)).Elem()
+
+type IndexType struct {
+	X reflect.Value
+	Index int
+}
+
+func (it IndexType) Assign(v reflect.Value) error {
+	switch it.X.Kind() {
+	case reflect.Slice:
+		v = matchDestType(v, it.X.Type().Elem())
+		it.X.Index(it.Index).Set(v)
+		return nil
+	}
+	return nil
+}
+
+func (it IndexType) Eval() reflect.Value {
+	switch it.X.Kind() {
+	case reflect.Slice:
+		return it.X.Index(it.Index)
+	}
+	return NoValue
+}
+
+func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) {
 	switch expr := expr.(type) {
 	case *ast.Ident:
 		tp, ok := basicTypes[expr.Name]
@@ -212,8 +250,18 @@ func (mch *machine) evalType(expr ast.Expr) (reflect.Type, error) {
 		}
 
 		return nil, unknownTypeErr(expr.Name)
+	case *ast.ArrayType:
+		if expr.Len == nil {
+			elTp, err := mch.evalType(ns, expr.Elt)
+			if err != nil {
+				return nil, err
+			}
+			return reflect.SliceOf(elTp), nil
+		}
+		ast.Print(token.NewFileSet(), expr)
+		return nil, fmt.Errorf("Wait for reflect.ArrayOf")
 	default:
 		ast.Print(token.NewFileSet(), expr)
-		return nil, fmt.Errorf("Unknown type expr: %s", expr)
+		return nil, fmt.Errorf("Unknown type expr: %+v", expr)
 	}
 }

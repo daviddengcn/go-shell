@@ -50,8 +50,12 @@ func tooManyArgumentsToConversionErr(tp reflect.Type) error {
 	return fmt.Errorf("too many arguments to conversion to %v", tp)
 }
 
-func missingArugmentToConversionErr(tp reflect.Type) error {
+func missingArgumentToConversionErr(tp reflect.Type) error {
 	return fmt.Errorf("missing argument to conversion to %v", tp)
+}
+
+func missingArgumentToFuncErr(name string) error {
+	return fmt.Errorf("missing argument to %s", name)
 }
 
 func cannotConvertToErr(vl reflect.Value, dstTp reflect.Type) error {
@@ -66,8 +70,20 @@ func tooManyArgumentsErr(fn string) error {
 	return fmt.Errorf("too many arguments in call to %s", fn)
 }
 
+type UndefinedError struct {
+	error
+}
+
 func undefinedErr(s string) error {
-	return fmt.Errorf("undefined: %v", s)
+	return UndefinedError{fmt.Errorf("undefined: %v", s)}
+}
+
+func cannotMakeTypeErr(tp reflect.Type) error {
+	return fmt.Errorf("cannot make type %v", tp)
+}
+
+func invalidArgumentForFuncErr(vl reflect.Value, fn string) error {
+	return fmt.Errorf("invalid argument %v (type %v) for %v", vl, vl.Type(), fn)
 }
 
 var (

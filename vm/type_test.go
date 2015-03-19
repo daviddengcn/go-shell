@@ -94,3 +94,20 @@ func TestTypeConversion(t *testing.T) {
 		assert.Equals(t, "j.Type()", j.Type(), reflect.TypeOf(new(int64)).Elem())
 	}
 }
+
+func TestArrayType(t *testing.T) {
+//	mch := newMachine()
+//	assert.NoError(t, mch.Run(`var a [5]int`))
+}
+
+func TestSliceType(t *testing.T) {
+	mch := newMachine()
+	assert.NoError(t, mch.Run(`s := make([]string, 3)
+s[0] = "abc"
+e := s[0]`))
+	e := mch.GlobalNameSpace.FindLocal("e")
+	if assert.NotEquals(t, "e", e, NoValue) {
+		assert.Equals(t, "e.Type()", e.Type(), reflect.TypeOf(new(string)).Elem())
+		assert.Equals(t, "e", e.Interface(), "abc")
+	}
+}

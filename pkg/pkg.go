@@ -63,13 +63,12 @@ func GenSource(imports []ImportAs, out io.Writer) error {
 		}
 		
 		dir := GoRootSrc.Join(ia.Path)
-		fmt.Println("import", ia.Alias, dir)
+		fmt.Println("import", ia.Alias, strconv.Quote(dir.S()))
 		
 		fs := token.NewFileSet()
 		pkgInfo, _ := build.Import(ia.Path, "", 0)
 		for _, goFile := range pkgInfo.GoFiles {
 			fn := dir.Join(goFile)
-			fmt.Println("fn ", fn)
 			f, err := parser.ParseFile(fs, fn.S(), nil, 0)
 			if err != nil {
 				villa.Fatalf("Parse %s failed: %v", fn.S(), err)
