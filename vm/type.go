@@ -1,10 +1,11 @@
 package gsvm
 
 import (
-	"fmt"
 	"go/ast"
 	"go/token"
 	"reflect"
+	
+	"github.com/daviddengcn/go-villa"
 )
 
 type intLiteral int64
@@ -259,9 +260,33 @@ func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) 
 			return reflect.SliceOf(elTp), nil
 		}
 		ast.Print(token.NewFileSet(), expr)
-		return nil, fmt.Errorf("Wait for reflect.ArrayOf")
+		return nil, villa.Errorf("Wait for reflect.ArrayOf")
+		
+	case *ast.SelectorExpr:
+		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
+		if err != nil {
+			return nil, err
+		}
+		
+		switch x.Type() {
+		case PackageType:
+			x := x.Interface().(Package)
+			if vl, ok := x[expr.Sel.Name]; ok {
+				if vl.Type() != TypeValueType {
+					return nil, notATypeErr(expr.Sel.Name)
+				}
+				return vl.Interface().(TypeValue).Type, nil
+			}
+			return nil, nil
+		default:
+			ast.Print(token.NewFileSet(), expr)
+			return nil, villa.Errorf("Unknown type expr: SelectorExpr X: %v", x.Type())
+		}
+		ast.Print(token.NewFileSet(), expr)
+		return nil, villa.Errorf("Unknown type expr: %+v", expr)
+		
 	default:
 		ast.Print(token.NewFileSet(), expr)
-		return nil, fmt.Errorf("Unknown type expr: %+v", expr)
+		return nil, villa.Errorf("Unknown type expr: %+v", expr)
 	}
 }

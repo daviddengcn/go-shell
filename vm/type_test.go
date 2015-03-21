@@ -21,6 +21,9 @@ func newMachine() *machine {
 		"reflect": Package{
 			"ValueOf": reflect.ValueOf(reflect.ValueOf),
 		},
+		"gsvm": Package{
+			"TypeValue": reflect.ValueOf(TypeValue{reflect.TypeOf(TypeValue{})}),
+		},
 	}}).(*machine)
 }
 

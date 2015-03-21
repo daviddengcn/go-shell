@@ -86,6 +86,18 @@ func invalidArgumentForFuncErr(vl reflect.Value, fn string) error {
 	return fmt.Errorf("invalid argument %v (type %v) for %v", vl, vl.Type(), fn)
 }
 
+func notATypeErr(name string) error {
+	return fmt.Errorf("%v is not a type", name)
+}
+
+func cannotUseAsTypeInErr(vl reflect.Value, tp reflect.Type, pos string) error {
+    return fmt.Errorf("cannot use %v (type %v) as type %v in %v", vl, vl.Type(), tp, pos)
+}
+
+func FirstArugmentToMustBeHaveErr(fn, expTp string, actTp reflect.Type) error {
+	return fmt.Errorf("first argument to %s must be %s; have %v", fn, expTp, actTp)
+}
+
 var (
 	noNewVarsErr = fmt.Errorf("no new on left side of :=")
 )

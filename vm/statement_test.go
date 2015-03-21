@@ -1,6 +1,7 @@
 package gsvm
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/daviddengcn/go-assert"
@@ -73,4 +74,13 @@ switch {
 }`))
 	j := mch.GlobalNameSpace.FindLocal("j")
 	assert.Equals(t, "j", j.Interface(), 5)
+}
+
+func TestAppend(t *testing.T) {
+	mch := newMachine()
+	
+	assert.NoError(t, mch.Run(`s := []string{"abc"}
+s = append(s, "def")`))
+	s := mch.GlobalNameSpace.FindLocal("s")
+	assert.Equals(t, "s", fmt.Sprint(s.Interface()), fmt.Sprint([]string{"abc", "def"}))
 }

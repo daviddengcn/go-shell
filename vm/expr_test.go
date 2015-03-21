@@ -3,6 +3,7 @@ package gsvm
 import (
 	"reflect"
 	"testing"
+	"fmt"
 
 	"github.com/daviddengcn/go-assert"
 )
@@ -45,4 +46,22 @@ l := len(s)`))
 	if assert.NotEquals(t, "l", l, NoValue) {
 		assert.Equals(t, "l", l.Interface(), 3)
 	}
+}
+
+func TestCompositeLit(t *testing.T) {
+	mch := newMachine()
+	
+	assert.NoError(t, mch.Run(`s := []string{"abc"}
+l := len(s)
+str := fmt.Sprint(s)`))
+	l := mch.GlobalNameSpace.FindLocal("l")
+	if assert.NotEquals(t, "l", l, NoValue) {
+		assert.Equals(t, "l", l.Interface(), 1)
+	}
+	str := mch.GlobalNameSpace.FindLocal("str")
+	if assert.NotEquals(t, "str", str, NoValue) {
+		assert.Equals(t, "str", str.Interface(), fmt.Sprint([]string{"abc"}))
+	}
+	
+	//assert.NoError(t, mch.Run(`t := gsvm.TypeValue{Type: nil}`))
 }

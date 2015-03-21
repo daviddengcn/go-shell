@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strconv"
 	"unicode/utf8"
+	
+	"github.com/daviddengcn/go-villa"
 )
 
 func checkSingleValue(vls []reflect.Value, err error) (reflect.Value, error) {
@@ -128,6 +130,33 @@ func init() {
 			default:
 				return nil, invalidArgumentForFuncErr(vl, "len")
 			}
+		},
+		"append": func(mch *machine, ns NameSpace, args []ast.Expr) ([]reflect.Value, error) {
+			if len(args) < 2 {
+				return nil, missingArgumentToFuncErr("append")
+			}
+
+			x, err := checkSingleValue(mch.evalExpr(ns, args[0]))
+			if err != nil {
+				return nil, err
+			}
+			
+			if (x.Kind() != reflect.Slice) {
+				return nil, FirstArugmentToMustBeHaveErr("append", "slice", x.Type())
+			}
+			
+			args = args[1:]
+
+			els := make([]reflect.Value, len(args))
+			for i, arg := range args {
+				argV, err := checkSingleValue(mch.evalExpr(ns, arg))
+				if err != nil {
+					return nil, err
+				}
+				els[i] = matchDestType(argV, x.Type().Elem())
+			}
+			
+			return singleValue(reflect.Append(x, els...))
 		},
 	}
 }
@@ -271,7 +300,6 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		return fn.Call(args), nil
 
 	case *ast.SelectorExpr:
-		//		ast.Print(token.NewFileSet(), expr)
 		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
 		if err != nil {
 			return nil, err
@@ -530,7 +558,7 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 			}
 
 		default:
-			return nil, fmt.Errorf("Unknown op: %v", expr.Op)
+			return nil, villa.Errorf("Unknown op: %v", expr.Op)
 		}
 
 		return nil, invalidOperationErr(expr.Op.String(), x.Type())
@@ -548,7 +576,33 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		}
 		
 		return valueToResult(IndexType{x, i})
+		
+	case *ast.CompositeLit:
+		tp, err := mch.evalType(ns, expr.Type)
+		if err != nil {
+			return nil, err
+		}
+		
+		switch tp.Kind() {
+		case reflect.Slice:
+			vl := reflect.MakeSlice(tp, len(expr.Elts), len(expr.Elts))
+			for i, elt := range expr.Elts {
+				vlElt, err := checkSingleValue(mch.evalExpr(ns, elt))
+				if err != nil {
+					return nil, err
+				}
+				dstElt := matchDestType(vlElt, tp.Elem())
+				if !dstElt.Type().AssignableTo(tp.Elem()) {
+					return nil, cannotUseAsTypeInErr(dstElt, tp.Elem(), "array element")
+				}
+				vl.Index(i).Set(dstElt)
+			}
+			return singleValue(vl)
+		default:
+			ast.Print(token.NewFileSet(), expr)
+			return nil, villa.Errorf("Unknown CompositeLit expr Kind")
+		}
 	}
 	ast.Print(token.NewFileSet(), expr)
-	return nil, fmt.Errorf("Unknown expr type")
+	return nil, villa.Errorf("Unknown expr type")
 }
