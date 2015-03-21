@@ -94,8 +94,8 @@ func cannotUseAsTypeInErr(vl reflect.Value, tp reflect.Type, pos string) error {
     return fmt.Errorf("cannot use %v (type %v) as type %v in %v", vl, vl.Type(), tp, pos)
 }
 
-func FirstArugmentToMustBeHaveErr(fn, expTp string, actTp reflect.Type) error {
-	return fmt.Errorf("first argument to %s must be %s; have %v", fn, expTp, actTp)
+func ArugmentToMustBeHaveErr(nth, fn, expTp string, actTp reflect.Type) error {
+	return fmt.Errorf("%s argument to %s must be %s; have %v", nth, fn, expTp, actTp)
 }
 
 var (

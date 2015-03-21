@@ -142,7 +142,7 @@ func init() {
 			}
 			
 			if (x.Kind() != reflect.Slice) {
-				return nil, FirstArugmentToMustBeHaveErr("append", "slice", x.Type())
+				return nil, ArugmentToMustBeHaveErr("first", "append", "slice", x.Type())
 			}
 			
 			args = args[1:]
@@ -158,6 +158,32 @@ func init() {
 			
 			return singleValue(reflect.Append(x, els...))
 		},
+		"copy": func(mch *machine, ns NameSpace, args []ast.Expr) ([]reflect.Value, error) {
+			if len(args) < 2 {
+				return nil, missingArgumentToFuncErr("len")
+			}
+			if len(args) > 2 {
+				return nil, tooManyArgumentsErr("len")
+			}
+			
+			x, err := checkSingleValue(mch.evalExpr(ns, args[0]))
+			if err != nil {
+				return nil, err
+			}
+			if (x.Kind() != reflect.Slice) {
+				return nil, ArugmentToMustBeHaveErr("first", "copy", "slice", x.Type())
+			}
+			
+			y, err := checkSingleValue(mch.evalExpr(ns, args[1]))
+			if err != nil {
+				return nil, err
+			}
+			if (y.Kind() != reflect.Slice) {
+				return nil, ArugmentToMustBeHaveErr("second", "copy", "slice", y.Type())
+			}
+			
+			return valueToResult(reflect.Copy(x, y))
+		}
 	}
 }
 
