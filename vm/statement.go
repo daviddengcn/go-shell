@@ -47,7 +47,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				if v == NoValue {
 					hasNew = true
 				} else if v.Type() == ConstValueType {
-					return cannotAssignToErr(ident.Name)
+					return cannotAssignToErr(l)
 				}
 			}
 			if !hasNew {
@@ -61,11 +61,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				if err != nil {
 					return err
 				}
-				
-				if rV.Type().Implements(EvalHandlerType) {
-					rV = rV.Interface().(EvalHandler).Eval()
-				}
-				
+
 				if len(st.Rhs) > 1 && rV.CanAddr() {
 					// Make a copy of lvalue for parallel assignments
 					tmp := reflect.New(rV.Type())
@@ -113,17 +109,9 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				if err != nil {
 					return err
 				}
-				
-				if v.Type().Implements(AssignHandlerType) {
-					ah := v.Interface().(AssignHandler)
-					if err := ah.Assign(values[i]); err != nil {
-						return err
-					}
-					continue
-				}
-				
+
 				if !v.CanSet() {
-					return cannotAssignToErr(v.String())
+					return cannotAssignToErr(l)
 				}
 				v.Set(matchDestType(values[i], v.Type()))
 			}
@@ -136,7 +124,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			}
 
 			if !v.CanSet() {
-				return cannotAssignToErr(v.String())
+				return cannotAssignToErr(l)
 			}
 
 			r := st.Rhs[0]
@@ -385,7 +373,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 		}
 
 		if !x.CanSet() {
-			return cannotAssignToErr(x.String())
+			return cannotAssignToErr(st.X)
 		}
 
 		switch x.Kind() {
@@ -439,7 +427,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				return err
 			}
 		}
-		
+
 		for _, el := range st.Body.List {
 			cc := el.(*ast.CaseClause)
 			matched := len(cc.List) == 0
@@ -478,7 +466,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			}
 			break
 		}
-		
+
 		return nil
 	}
 

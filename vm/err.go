@@ -3,8 +3,18 @@ package gsvm
 import (
 	"fmt"
 	"go/ast"
+	"go/printer"
+	"go/token"
 	"reflect"
+
+	"github.com/daviddengcn/go-villa"
 )
+
+func exprToStr(expr ast.Expr) string {
+	var src villa.ByteSlice
+	(&printer.Config{Mode: printer.UseSpaces, Tabwidth: 4}).Fprint(&src, token.NewFileSet(), expr)
+	return string(src)
+}
 
 func redeclareVarErr(name string) error {
 	return fmt.Errorf("%s redeclare in this block", name)
@@ -18,8 +28,8 @@ func invalidOperationErr(op string, tp reflect.Type) error {
 	return fmt.Errorf("operator %s not defined on %s", op, tp.Name())
 }
 
-func cannotAssignToErr(v string) error {
-	return fmt.Errorf("Can not assign to %s", v)
+func cannotAssignToErr(expr ast.Expr) error {
+	return fmt.Errorf("cannot assign to %v", exprToStr(expr))
 }
 
 func cannotUseAsInAssignmentErr(vl reflect.Value, dstTp reflect.Type) error {
@@ -91,11 +101,15 @@ func notATypeErr(name string) error {
 }
 
 func cannotUseAsTypeInErr(vl reflect.Value, tp reflect.Type, pos string) error {
-    return fmt.Errorf("cannot use %v (type %v) as type %v in %v", vl, vl.Type(), tp, pos)
+	return fmt.Errorf("cannot use %v (type %v) as type %v in %v", vl, vl.Type(), tp, pos)
 }
 
-func ArugmentToMustBeHaveErr(nth, fn, expTp string, actTp reflect.Type) error {
+func arugmentToMustBeHaveErr(nth, fn, expTp string, actTp reflect.Type) error {
 	return fmt.Errorf("%s argument to %s must be %s; have %v", nth, fn, expTp, actTp)
+}
+
+func cannotSliceErr(expr ast.Expr, tp reflect.Type) error {
+	return fmt.Errorf("cannot slice %v (type %v)", expr, tp)
 }
 
 var (

@@ -63,7 +63,7 @@ func TestSwitchStatment(t *testing.T) {
 }`))
 	s := mch.GlobalNameSpace.FindLocal("s")
 	assert.Equals(t, "s", s.Interface(), "two")
-	
+
 	// check execution of default clause
 	assert.NoError(t, mch.Run(`j := 3
 switch {
@@ -78,7 +78,7 @@ switch {
 
 func TestAppend(t *testing.T) {
 	mch := newMachine()
-	
+
 	assert.NoError(t, mch.Run(`s := []string{"abc"}
 s = append(s, "def")`))
 	s := mch.GlobalNameSpace.FindLocal("s")

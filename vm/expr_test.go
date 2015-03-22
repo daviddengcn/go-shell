@@ -1,9 +1,9 @@
 package gsvm
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
-	"fmt"
 
 	"github.com/daviddengcn/go-assert"
 )
@@ -30,7 +30,7 @@ func TestFuncCall(t *testing.T) {
 	mch := newMachine()
 	assert.NoError(t, mch.Run(`const n = 500000000`))
 	assert.NoError(t, mch.Run(`fmt.Println(math.Sin(n))`))
-	
+
 	assert.NoError(t, mch.Run(`i := fmt.Sprint(reflect.ValueOf(10).Type())`))
 	i := mch.GlobalNameSpace.FindLocal("i")
 	if assert.NotEquals(t, "i", i, NoValue) {
@@ -50,7 +50,7 @@ l := len(s)`))
 
 func TestCompositeLit(t *testing.T) {
 	mch := newMachine()
-	
+
 	assert.NoError(t, mch.Run(`s := []string{"abc"}
 l := len(s)
 str := fmt.Sprint(s)`))
@@ -62,6 +62,34 @@ str := fmt.Sprint(s)`))
 	if assert.NotEquals(t, "str", str, NoValue) {
 		assert.Equals(t, "str", str.Interface(), fmt.Sprint([]string{"abc"}))
 	}
-	
+
 	//assert.NoError(t, mch.Run(`t := gsvm.TypeValue{Type: nil}`))
+}
+
+func TestCopy(t *testing.T) {
+	mch := newMachine()
+	assert.NoError(t, mch.Run(`s := []string{"abc", "def"}
+t := []string{""}
+l := copy(t, s)`))
+	assert.Equals(t, "l", mch.GlobalNameSpace.FindLocal("l").Interface(), 1)
+	assert.StringEquals(t, "t", mch.GlobalNameSpace.FindLocal("t").Interface(), []string{"abc"})
+}
+
+func TestSlicing(t *testing.T) {
+	mch := newMachine()
+	assert.NoError(t, mch.Run(`s := []string{"abc", "def", "ghi", "j", "k"}
+l := s[2:5]
+m := s[:3]
+k := s[1:2:3]`))
+	l := mch.GlobalNameSpace.FindLocal("l").Interface().([]string)
+	assert.StringEquals(t, "l", l, []string{"ghi", "j", "k"})
+	assert.Equals(t, "cap(l)", cap(l), 3)
+
+	m := mch.GlobalNameSpace.FindLocal("m").Interface().([]string)
+	assert.StringEquals(t, "m", m, []string{"abc", "def", "ghi"})
+	assert.Equals(t, "cap(m)", cap(m), 5)
+
+	k := mch.GlobalNameSpace.FindLocal("k").Interface().([]string)
+	assert.StringEquals(t, "k", k, []string{"def"})
+	assert.Equals(t, "cap(k)", cap(k), 2)
 }

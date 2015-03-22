@@ -13,13 +13,14 @@ func newMachine() *machine {
 	return New(&PackageNameSpace{Packages: map[string]Package{
 		"fmt": Package{
 			"Println": reflect.ValueOf(fmt.Println),
-			"Sprint": reflect.ValueOf(fmt.Sprint),
+			"Sprint":  reflect.ValueOf(fmt.Sprint),
 		},
 		"math": Package{
 			"Sin": reflect.ValueOf(math.Sin),
 		},
 		"reflect": Package{
 			"ValueOf": reflect.ValueOf(reflect.ValueOf),
+			"TypeOf":  reflect.ValueOf(reflect.TypeOf),
 		},
 		"gsvm": Package{
 			"TypeValue": reflect.ValueOf(TypeValue{reflect.TypeOf(TypeValue{})}),
@@ -99,8 +100,8 @@ func TestTypeConversion(t *testing.T) {
 }
 
 func TestArrayType(t *testing.T) {
-//	mch := newMachine()
-//	assert.NoError(t, mch.Run(`var a [5]int`))
+	//	mch := newMachine()
+	//	assert.NoError(t, mch.Run(`var a [5]int`))
 }
 
 func TestSliceType(t *testing.T) {

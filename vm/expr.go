@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"strconv"
 	"unicode/utf8"
-	
+
 	"github.com/daviddengcn/go-villa"
 )
 
@@ -67,7 +67,7 @@ type builtinFuncImpl func(mch *machine, ns NameSpace, args []ast.Expr) ([]reflec
 var gBuiltinFuncs map[string]builtinFuncImpl
 
 func init() {
-	gBuiltinFuncs = map[string]builtinFuncImpl {
+	gBuiltinFuncs = map[string]builtinFuncImpl{
 		"make": func(mch *machine, ns NameSpace, args []ast.Expr) ([]reflect.Value, error) {
 			if len(args) == 0 {
 				return nil, missingArgumentToFuncErr("make")
@@ -76,7 +76,7 @@ func init() {
 			if err != nil {
 				return nil, err
 			}
-			
+
 			switch tp.Kind() {
 			case reflect.Slice:
 				if len(args) > 3 {
@@ -86,7 +86,7 @@ func init() {
 				if err != nil {
 					return nil, err
 				}
-				
+
 				ln, err := asInteger(l)
 				if err != nil {
 					return nil, err
@@ -97,13 +97,13 @@ func init() {
 					if err != nil {
 						return nil, err
 					}
-					
+
 					cp, err = asInteger(c)
 					if err != nil {
 						return nil, err
 					}
 				}
-				
+
 				return singleValue(reflect.MakeSlice(tp, ln, cp))
 			// TODO make(map)
 			default:
@@ -118,12 +118,12 @@ func init() {
 			if len(args) > 1 {
 				return nil, tooManyArgumentsErr("len")
 			}
-			
+
 			vl, err := checkSingleValue(mch.evalExpr(ns, args[0]))
 			if err != nil {
 				return nil, err
 			}
-			
+
 			switch vl.Kind() {
 			case reflect.Array, reflect.Chan, reflect.Map, reflect.Slice, reflect.String:
 				return valueToResult(intLiteral(vl.Len()))
@@ -140,11 +140,11 @@ func init() {
 			if err != nil {
 				return nil, err
 			}
-			
-			if (x.Kind() != reflect.Slice) {
-				return nil, ArugmentToMustBeHaveErr("first", "append", "slice", x.Type())
+
+			if x.Kind() != reflect.Slice {
+				return nil, arugmentToMustBeHaveErr("first", "append", "slice", x.Type())
 			}
-			
+
 			args = args[1:]
 
 			els := make([]reflect.Value, len(args))
@@ -155,7 +155,7 @@ func init() {
 				}
 				els[i] = matchDestType(argV, x.Type().Elem())
 			}
-			
+
 			return singleValue(reflect.Append(x, els...))
 		},
 		"copy": func(mch *machine, ns NameSpace, args []ast.Expr) ([]reflect.Value, error) {
@@ -165,25 +165,25 @@ func init() {
 			if len(args) > 2 {
 				return nil, tooManyArgumentsErr("len")
 			}
-			
+
 			x, err := checkSingleValue(mch.evalExpr(ns, args[0]))
 			if err != nil {
 				return nil, err
 			}
-			if (x.Kind() != reflect.Slice) {
-				return nil, ArugmentToMustBeHaveErr("first", "copy", "slice", x.Type())
+			if x.Kind() != reflect.Slice {
+				return nil, arugmentToMustBeHaveErr("first", "copy", "slice", x.Type())
 			}
-			
+
 			y, err := checkSingleValue(mch.evalExpr(ns, args[1]))
 			if err != nil {
 				return nil, err
 			}
-			if (y.Kind() != reflect.Slice) {
-				return nil, ArugmentToMustBeHaveErr("second", "copy", "slice", y.Type())
+			if y.Kind() != reflect.Slice {
+				return nil, arugmentToMustBeHaveErr("second", "copy", "slice", y.Type())
 			}
-			
+
 			return valueToResult(reflect.Copy(x, y))
-		}
+		},
 	}
 }
 
@@ -346,11 +346,11 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		for x.Kind() == reflect.Ptr {
 			x = x.Elem()
 		}
-		
+
 		if x.Kind() != reflect.Struct {
 			return nil, fmt.Errorf("no-struct")
 		}
-		
+
 		if vl := x.FieldByName(expr.Sel.Name); vl.IsValid() {
 			return singleValue(vl)
 		}
@@ -588,27 +588,27 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		}
 
 		return nil, invalidOperationErr(expr.Op.String(), x.Type())
-		
+
 	case *ast.IndexExpr:
 		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
 		if err != nil {
 			return nil, err
 		}
-		
+
 		index, err := checkSingleValue(mch.evalExpr(ns, expr.Index))
 		i, err := asInteger(index)
 		if err != nil {
 			return nil, err
 		}
-		
-		return valueToResult(IndexType{x, i})
-		
+
+		return singleValue(x.Index(i))
+
 	case *ast.CompositeLit:
 		tp, err := mch.evalType(ns, expr.Type)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		switch tp.Kind() {
 		case reflect.Slice:
 			vl := reflect.MakeSlice(tp, len(expr.Elts), len(expr.Elts))
@@ -627,6 +627,56 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		default:
 			ast.Print(token.NewFileSet(), expr)
 			return nil, villa.Errorf("Unknown CompositeLit expr Kind")
+		}
+
+	case *ast.SliceExpr:
+		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
+		if err != nil {
+			return nil, err
+		}
+
+		if x.Kind() != reflect.Slice {
+			return nil, cannotSliceErr(expr.X, x.Type())
+		}
+
+		i := 0
+		if expr.Low != nil {
+			vi, err := checkSingleValue(mch.evalExpr(ns, expr.Low))
+			if err != nil {
+				return nil, err
+			}
+
+			i, err = asInteger(vi)
+			if err != nil {
+				return nil, err
+			}
+		}
+		j := x.Len()
+		if expr.High != nil {
+			vj, err := checkSingleValue(mch.evalExpr(ns, expr.High))
+			if err != nil {
+				return nil, err
+			}
+
+			j, err = asInteger(vj)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		if expr.Slice3 {
+			vk, err := checkSingleValue(mch.evalExpr(ns, expr.Max))
+			if err != nil {
+				return nil, err
+			}
+
+			k, err := asInteger(vk)
+			if err != nil {
+				return nil, err
+			}
+			return singleValue(x.Slice3(i, j, k))
+		} else {
+			return singleValue(x.Slice(i, j))
 		}
 	}
 	ast.Print(token.NewFileSet(), expr)

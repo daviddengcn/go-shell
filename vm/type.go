@@ -4,7 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"reflect"
-	
+
 	"github.com/daviddengcn/go-villa"
 )
 
@@ -89,14 +89,10 @@ func matchType(x, y reflect.Value) (nX, nY reflect.Value, err error) {
 // matchDestType tries match vl with dstTp and return converted value. If
 // fail to match, return vl.
 func matchDestType(vl reflect.Value, dstTp reflect.Type) reflect.Value {
-	if vl.Type().Implements(EvalHandlerType) {
-		return matchDestType(vl.Interface().(EvalHandler).Eval(), dstTp)
-	}
-	
 	if vl.Type() == ConstValueType {
 		vl = vl.Field(0).Interface().(reflect.Value)
 	}
-	
+
 	if vl.Type() == dstTp {
 		return vl
 	}
@@ -208,40 +204,6 @@ type TypeValue struct {
 
 var TypeValueType = reflect.TypeOf(TypeValue{})
 
-type AssignHandler interface {
-	Assign(v reflect.Value) error
-}
-
-var AssignHandlerType = reflect.TypeOf((*AssignHandler)(nil)).Elem()
-
-type EvalHandler interface {
-	Eval() reflect.Value
-}
-var EvalHandlerType = reflect.TypeOf((*EvalHandler)(nil)).Elem()
-
-type IndexType struct {
-	X reflect.Value
-	Index int
-}
-
-func (it IndexType) Assign(v reflect.Value) error {
-	switch it.X.Kind() {
-	case reflect.Slice:
-		v = matchDestType(v, it.X.Type().Elem())
-		it.X.Index(it.Index).Set(v)
-		return nil
-	}
-	return nil
-}
-
-func (it IndexType) Eval() reflect.Value {
-	switch it.X.Kind() {
-	case reflect.Slice:
-		return it.X.Index(it.Index)
-	}
-	return NoValue
-}
-
 func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) {
 	switch expr := expr.(type) {
 	case *ast.Ident:
@@ -261,13 +223,13 @@ func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) 
 		}
 		ast.Print(token.NewFileSet(), expr)
 		return nil, villa.Errorf("Wait for reflect.ArrayOf")
-		
+
 	case *ast.SelectorExpr:
 		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
 		if err != nil {
 			return nil, err
 		}
-		
+
 		switch x.Type() {
 		case PackageType:
 			x := x.Interface().(Package)
@@ -284,7 +246,7 @@ func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) 
 		}
 		ast.Print(token.NewFileSet(), expr)
 		return nil, villa.Errorf("Unknown type expr: %+v", expr)
-		
+
 	default:
 		ast.Print(token.NewFileSet(), expr)
 		return nil, villa.Errorf("Unknown type expr: %+v", expr)
