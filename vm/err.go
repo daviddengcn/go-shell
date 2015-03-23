@@ -28,8 +28,12 @@ func invalidOperationErr(op string, tp reflect.Type) error {
 	return fmt.Errorf("operator %s not defined on %s", op, tp.Name())
 }
 
+func invalidOperationTypeDoesNotSupportIndexingErr(expr ast.Expr, kind reflect.Kind) error {
+	return fmt.Errorf("invalid operation: %v (type %v does not support indexing)", exprToStr(expr), kind)
+}
+
 func cannotAssignToErr(expr ast.Expr) error {
-	return fmt.Errorf("cannot assign to %v", exprToStr(expr))
+	return villa.ErrorfN(2, "cannot assign to %v", exprToStr(expr))
 }
 
 func cannotUseAsInAssignmentErr(vl reflect.Value, dstTp reflect.Type) error {

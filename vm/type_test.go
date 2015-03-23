@@ -115,3 +115,12 @@ e := s[0]`))
 		assert.Equals(t, "e", e.Interface(), "abc")
 	}
 }
+
+func TestMapType(t *testing.T) {
+	mch := newMachine()
+	
+	assert.NoError(t, mch.Run(`m := make(map[string]int)
+m["k1"] = 7
+v := m["k1"]`))
+	assert.StringEquals(t, "v", mch.GlobalNameSpace.FindLocal("v").Interface(), 7)
+}

@@ -110,6 +110,12 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 					return err
 				}
 
+				if v.Type() == MapIndexValueType {
+					v := v.Interface().(MapIndexValue)
+					values[i] = matchDestType(values[i], v.X.Type().Elem())
+					v.X.SetMapIndex(v.Key, values[i])
+					continue
+				}
 				if !v.CanSet() {
 					return cannotAssignToErr(l)
 				}

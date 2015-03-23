@@ -59,7 +59,13 @@ func valueEqual(a, b reflect.Value) (bool, error) {
 }
 
 func asInteger(vl reflect.Value) (int, error) {
-	return int(vl.Int()), nil
+	switch vl.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		 reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return int(vl.Int()), nil
+	}
+
+	return 0, villa.Errorf("%v is not an int", vl)
 }
 
 type builtinFuncImpl func(mch *machine, ns NameSpace, args []ast.Expr) ([]reflect.Value, error)
@@ -76,24 +82,26 @@ func init() {
 			if err != nil {
 				return nil, err
 			}
+			args = args[1:]
 
 			switch tp.Kind() {
 			case reflect.Slice:
-				if len(args) > 3 {
+				if len(args) > 2 {
 					return nil, tooManyArgumentsErr("make")
 				}
-				l, err := checkSingleValue(mch.evalExpr(ns, args[1]))
+				l, err := checkSingleValue(mch.evalExpr(ns, args[0]))
 				if err != nil {
 					return nil, err
 				}
+				args = args[1:]
 
 				ln, err := asInteger(l)
 				if err != nil {
 					return nil, err
 				}
 				cp := ln
-				if len(args) == 3 {
-					c, err := checkSingleValue(mch.evalExpr(ns, args[2]))
+				if len(args) == 1 {
+					c, err := checkSingleValue(mch.evalExpr(ns, args[0]))
 					if err != nil {
 						return nil, err
 					}
@@ -105,7 +113,13 @@ func init() {
 				}
 
 				return singleValue(reflect.MakeSlice(tp, ln, cp))
-			// TODO make(map)
+				
+			case reflect.Map:
+				if len(args) > 0 {
+					return nil, tooManyArgumentsErr("make")
+				}
+				return singleValue(reflect.MakeMap(tp))
+				
 			default:
 				return nil, cannotMakeTypeErr(tp)
 			}
@@ -596,13 +610,25 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		}
 
 		index, err := checkSingleValue(mch.evalExpr(ns, expr.Index))
-		i, err := asInteger(index)
 		if err != nil {
 			return nil, err
 		}
-
-		return singleValue(x.Index(i))
-
+		
+		switch x.Kind() {
+		case reflect.Slice:
+			i, err := asInteger(index)
+			if err != nil {
+				return nil, err
+			}
+	
+			return singleValue(x.Index(i))
+		case reflect.Map:
+			// TODO check type of index
+			index = matchDestType(index, x.Type().Key())
+			return valueToResult(MapIndexValue{x, index})
+		}
+		
+		return nil, invalidOperationTypeDoesNotSupportIndexingErr(expr, x.Kind())
 	case *ast.CompositeLit:
 		tp, err := mch.evalType(ns, expr.Type)
 		if err != nil {

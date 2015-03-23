@@ -34,6 +34,9 @@ func removeBasicLit(vl reflect.Value) reflect.Value {
 		return reflect.ValueOf(rune(vl.Int()))
 	case stringLiteralType:
 		return reflect.ValueOf(vl.String())
+	case MapIndexValueType:
+		vl := vl.Interface().(MapIndexValue)
+		return removeBasicLit(vl.X.MapIndex(vl.Key))
 	}
 
 	return vl
@@ -89,6 +92,11 @@ func matchType(x, y reflect.Value) (nX, nY reflect.Value, err error) {
 // matchDestType tries match vl with dstTp and return converted value. If
 // fail to match, return vl.
 func matchDestType(vl reflect.Value, dstTp reflect.Type) reflect.Value {
+	if vl.Type() == MapIndexValueType {
+		vl := vl.Interface().(MapIndexValue)
+		return matchDestType(vl.X.MapIndex(vl.Key), dstTp)
+	}
+	
 	if vl.Type() == ConstValueType {
 		vl = vl.Field(0).Interface().(reflect.Value)
 	}
@@ -204,6 +212,12 @@ type TypeValue struct {
 
 var TypeValueType = reflect.TypeOf(TypeValue{})
 
+type MapIndexValue struct {
+	X   reflect.Value
+	Key reflect.Value
+}
+var MapIndexValueType = reflect.TypeOf(MapIndexValue{})
+
 func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) {
 	switch expr := expr.(type) {
 	case *ast.Ident:
@@ -247,6 +261,19 @@ func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) 
 		ast.Print(token.NewFileSet(), expr)
 		return nil, villa.Errorf("Unknown type expr: %+v", expr)
 
+	case *ast.MapType:
+		keyTp, err := mch.evalType(ns, expr.Key)
+		if err != nil {
+			return nil, err
+		}
+		
+		valTp, err := mch.evalType(ns, expr.Value)
+		if err != nil {
+			return nil, err
+		}
+		
+		// TODO check keyTp
+		return reflect.MapOf(keyTp, valTp), nil
 	default:
 		ast.Print(token.NewFileSet(), expr)
 		return nil, villa.Errorf("Unknown type expr: %+v", expr)
