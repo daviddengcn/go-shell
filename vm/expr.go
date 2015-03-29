@@ -707,9 +707,47 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 				vl.SetMapIndex(key, val)
 			}
 			return singleValue(vl)
+		case reflect.Struct:
+			res := reflect.New(tp).Elem()
+
+			for idx, elt := range expr.Elts {
+				var val, vFld reflect.Value
+				var valExpr ast.Expr
+				switch elt := elt.(type) {
+				case *ast.KeyValueExpr:
+					var err error
+					val, err = checkSingleValue(mch.evalExpr(ns, elt.Value))
+					if err != nil {
+						return nil, err
+					}
+
+					key := elt.Key.(*ast.Ident).Name
+					vFld = res.FieldByName(key)
+
+					valExpr = elt.Value
+				default:
+					var err error
+					val, err = checkSingleValue(mch.evalExpr(ns, elt))
+					if err != nil {
+						return nil, err
+					}
+
+					vFld = res.Field(idx)
+
+					valExpr = elt
+				}
+
+				val = matchDestType(val, vFld.Type())
+				if val.Type() != vFld.Type() {
+					return nil, cannotUseAsTypeInErr(valExpr, val.Type(), vFld.Type(), "field value")
+				}
+				vFld.Set(val)
+			}
+
+			return singleValue(res)
 		default:
 			ast.Print(token.NewFileSet(), expr)
-			return nil, villa.Errorf("Unknown CompositeLit expr Kind")
+			return nil, villa.Errorf("Unknown CompositeLit expr Kind: %v", tp.Kind())
 		}
 
 	case *ast.SliceExpr:

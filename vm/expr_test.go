@@ -2,6 +2,7 @@ package gsvm
 
 import (
 	"fmt"
+	"image/color"
 	"reflect"
 	"testing"
 
@@ -38,16 +39,6 @@ func TestFuncCall(t *testing.T) {
 	}
 }
 
-func TestMake(t *testing.T) {
-	mch := newMachine()
-	assert.NoError(t, mch.Run(`s := make([]string, 3)
-l := len(s)`))
-	l := mch.GlobalNameSpace.FindLocal("l")
-	if assert.NotEquals(t, "l", l, NoValue) {
-		assert.Equals(t, "l", l.Interface(), 3)
-	}
-}
-
 func TestCompositeLit(t *testing.T) {
 	mch := newMachine()
 
@@ -63,7 +54,26 @@ str := fmt.Sprint(s)`))
 		assert.Equals(t, "str", str.Interface(), fmt.Sprint([]string{"abc"}))
 	}
 
-	//assert.NoError(t, mch.Run(`t := gsvm.TypeValue{Type: nil}`))
+	assert.NoError(t, mch.Run(`a := color.Alpha{A: 10}
+aa := a.A`))
+	assert.Equals(t, "a", mch.GlobalNameSpace.FindLocal("a").Interface(), color.Alpha{A: 10})
+	assert.Equals(t, "aa", mch.GlobalNameSpace.FindLocal("aa").Interface(), uint8(10))
+
+	assert.NoError(t, mch.Run(`b := color.Alpha{20}
+pb := &b
+ba := pb.A`))
+	assert.Equals(t, "b", mch.GlobalNameSpace.FindLocal("b").Interface(), color.Alpha{20})
+	assert.Equals(t, "aa", mch.GlobalNameSpace.FindLocal("ba").Interface(), uint8(20))
+}
+
+func TestMake(t *testing.T) {
+	mch := newMachine()
+	assert.NoError(t, mch.Run(`s := make([]string, 3)
+l := len(s)`))
+	l := mch.GlobalNameSpace.FindLocal("l")
+	if assert.NotEquals(t, "l", l, NoValue) {
+		assert.Equals(t, "l", l.Interface(), 3)
+	}
 }
 
 func TestCopy(t *testing.T) {
@@ -114,4 +124,15 @@ k := m["k1"]`))
 
 	assert.NoError(t, mch.Run(`l = m["k1"]`))
 	assert.Equals(t, "l", mch.GlobalNameSpace.FindLocal("l").Interface(), 7)
+}
+
+func TestClosure(t *testing.T) {
+	/* wait for reflect to support FuncOf
+		mch := newMachine()
+		assert.NoError(t, mch.Run(`
+	var nextInt func() int
+	{
+		i := 0
+	}`))
+	*/
 }

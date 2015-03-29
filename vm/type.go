@@ -282,6 +282,9 @@ func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) 
 
 		// TODO check keyTp
 		return reflect.MapOf(keyTp, valTp), nil
+
+	case *ast.FuncType:
+		return nil, villa.Error("Waiting for reflect package to support reflect.FuncOf")
 	default:
 		ast.Print(token.NewFileSet(), expr)
 		return nil, villa.Errorf("Unknown type expr: %+v", expr)

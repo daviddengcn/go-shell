@@ -2,6 +2,7 @@ package gsvm
 
 import (
 	"fmt"
+	"image/color"
 	"math"
 	"reflect"
 	"testing"
@@ -25,6 +26,9 @@ func newMachine() *machine {
 		},
 		"gsvm": Package{
 			"TypeValue": reflect.ValueOf(TypeValue{reflect.TypeOf(TypeValue{})}),
+		},
+		"color": Package{
+			"Alpha": reflect.ValueOf(TypeValue{reflect.TypeOf(color.Alpha{})}),
 		},
 	}}).(*machine)
 }
