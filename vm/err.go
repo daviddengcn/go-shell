@@ -120,6 +120,10 @@ func assignmentCountMismatchErr(nL int, tok token.Token, nR int) error {
 	return fmt.Errorf("assignment count mismatch: %d %v %d", nL, tok, nR)
 }
 
+func cannotRangeOverErr(x ast.Expr, tp reflect.Type) error {
+	return fmt.Errorf("cannot range over %s (type %v)", exprToStr(x), tp)
+}
+
 var (
 	noNewVarsErr = fmt.Errorf("no new on left side of :=")
 )

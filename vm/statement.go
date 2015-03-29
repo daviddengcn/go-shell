@@ -6,8 +6,8 @@ import (
 	"go/token"
 	"log"
 	"reflect"
-	
-//	"github.com/daviddengcn/go-villa"
+
+	"github.com/daviddengcn/go-villa"
 )
 
 type BranchErr int
@@ -61,7 +61,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			if err != nil {
 				return err
 			}
-			
+
 			if rV.Type() == MapIndexValueType {
 				switch len(st.Lhs) {
 				case 1, 2:
@@ -72,7 +72,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			} else if len(st.Lhs) != 1 {
 				return assignmentCountMismatchErr(len(st.Lhs), st.Tok, len(st.Rhs))
 			}
-		} else  if len(st.Lhs) != len(st.Rhs) {
+		} else if len(st.Lhs) != len(st.Rhs) {
 			return assignmentCountMismatchErr(len(st.Lhs), st.Tok, len(st.Rhs))
 		}
 		switch st.Tok {
@@ -103,7 +103,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 					if err != nil {
 						return err
 					}
-	
+
 					if len(st.Rhs) > 1 && rV.CanAddr() {
 						// Make a copy of lvalue for parallel assignments
 						tmp := reflect.New(rV.Type())
@@ -383,6 +383,136 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 		}
 		return nil
 
+	case *ast.RangeStmt:
+		x, err := checkSingleValue(mch.evalExpr(ns, st.X))
+		if err != nil {
+			return err
+		}
+		x = removeBasicLit(x)
+
+		hasKey := st.Key != nil
+		if hasKey {
+			ident, ok := st.Key.(*ast.Ident)
+			if ok && ident.Name == "_" {
+				hasKey = false
+			}
+		}
+		hasValue := st.Value != nil
+		if hasValue {
+			ident, ok := st.Value.(*ast.Ident)
+			if ok && ident.Name == "_" {
+				hasValue = false
+			}
+		}
+
+		blkNs := ns
+		if st.Tok == token.DEFINE && (hasKey || hasValue) {
+			blkNs = ns.NewBlock()
+		}
+
+		switch x.Kind() {
+		case reflect.Slice:
+			var key, value reflect.Value
+			if st.Tok == token.DEFINE {
+				if hasKey {
+					ident := st.Key.(*ast.Ident)
+					key = reflect.New(intType).Elem()
+					blkNs.AddLocal(ident.Name, key)
+				}
+				if hasValue {
+					ident := st.Value.(*ast.Ident)
+					value = reflect.New(x.Type().Elem()).Elem()
+					blkNs.AddLocal(ident.Name, value)
+				}
+			} else if st.Tok == token.ASSIGN {
+				return villa.Error("Not implemented!")
+			}
+			for i := 0; i < x.Len(); i++ {
+				if hasKey {
+					key.SetInt(int64(i))
+				}
+				if hasValue {
+					value.Set(x.Index(i))
+				}
+				if st.Body != nil {
+					if err := mch.runStatement(blkNs, st.Body); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+
+		case reflect.Map:
+			var key, value reflect.Value
+			if st.Tok == token.DEFINE {
+				if hasKey {
+					ident := st.Key.(*ast.Ident)
+					key = reflect.New(x.Type().Key()).Elem()
+					blkNs.AddLocal(ident.Name, key)
+				}
+				if hasValue {
+					ident := st.Value.(*ast.Ident)
+					value = reflect.New(x.Type().Elem()).Elem()
+					blkNs.AddLocal(ident.Name, value)
+				}
+			} else if st.Tok == token.ASSIGN {
+				return villa.Error("Not implemented!")
+			}
+			for _, mKey := range x.MapKeys() {
+				mValue := x.MapIndex(mKey)
+				if !mValue.IsValid() {
+					continue
+				}
+				if hasKey {
+					key.Set(mKey)
+				}
+				if hasValue {
+					value.Set(mValue)
+				}
+				if st.Body != nil {
+					if err := mch.runStatement(blkNs, st.Body); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+
+		case reflect.String:
+			var key, value reflect.Value
+			if st.Tok == token.DEFINE {
+				if hasKey {
+					ident := st.Key.(*ast.Ident)
+					key = reflect.New(intType).Elem()
+					blkNs.AddLocal(ident.Name, key)
+				}
+				if hasValue {
+					ident := st.Value.(*ast.Ident)
+					value = reflect.New(runeType).Elem()
+					blkNs.AddLocal(ident.Name, value)
+				}
+			} else if st.Tok == token.ASSIGN {
+				return villa.Error("Not implemented!")
+			}
+			for i, r := range x.String() {
+				if hasKey {
+					key.SetInt(int64(i))
+				}
+				if hasValue {
+					value.SetInt(int64(r))
+				}
+				if st.Body != nil {
+					if err := mch.runStatement(blkNs, st.Body); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+
+		default:
+			return cannotRangeOverErr(st.X, x.Type())
+		}
+
+		return villa.Error("RangeStmt")
 	case *ast.BranchStmt:
 		if st.Tok == token.BREAK {
 			return beBreak
@@ -525,6 +655,6 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 
 	log.Println("Unknown statement type")
 	ast.Print(token.NewFileSet(), st)
-	panic("")
-	return fmt.Errorf("Unknown statement type")
+	panic("Unknown statement type")
+	return villa.Error("Unknown statement type")
 }

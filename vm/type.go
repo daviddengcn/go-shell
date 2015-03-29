@@ -96,7 +96,7 @@ func matchDestType(vl reflect.Value, dstTp reflect.Type) reflect.Value {
 		vl := vl.Interface().(MapIndexValue)
 		return matchDestType(vl.X.MapIndex(vl.Key), dstTp)
 	}
-	
+
 	if vl.Type() == ConstValueType {
 		vl = vl.Field(0).Interface().(reflect.Value)
 	}
@@ -173,12 +173,17 @@ func literalAssignConvert(v reflect.Value, dstTp reflect.Type) (reflect.Value, e
 }
 
 var (
+	intType  = reflect.TypeOf(int(0))
+	runeType = reflect.TypeOf(rune(0))
+)
+
+var (
 	basicTypes = map[string]reflect.Type{
-		"int":        reflect.TypeOf(int(0)),
+		"int":        intType,
 		"int8":       reflect.TypeOf(int8(0)),
 		"int16":      reflect.TypeOf(int16(0)),
 		"int32":      reflect.TypeOf(int32(0)),
-		"rune":       reflect.TypeOf(int32(0)),
+		"rune":       runeType,
 		"int64":      reflect.TypeOf(int64(0)),
 		"uint":       reflect.TypeOf(uint(0)),
 		"uint8":      reflect.TypeOf(uint8(0)),
@@ -214,10 +219,11 @@ var TypeValueType = reflect.TypeOf(TypeValue{})
 
 type MapIndexValue struct {
 	// a map Value
-	X   reflect.Value
+	X reflect.Value
 	// a value same typed with X.Type().Key()
 	Key reflect.Value
 }
+
 var MapIndexValueType = reflect.TypeOf(MapIndexValue{})
 
 func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) {
@@ -268,12 +274,12 @@ func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) 
 		if err != nil {
 			return nil, err
 		}
-		
+
 		valTp, err := mch.evalType(ns, expr.Value)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// TODO check keyTp
 		return reflect.MapOf(keyTp, valTp), nil
 	default:

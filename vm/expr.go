@@ -61,7 +61,7 @@ func valueEqual(a, b reflect.Value) (bool, error) {
 func asInteger(vl reflect.Value) (int, error) {
 	switch vl.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		 reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		return int(vl.Int()), nil
 	}
 
@@ -113,13 +113,13 @@ func init() {
 				}
 
 				return singleValue(reflect.MakeSlice(tp, ln, cp))
-				
+
 			case reflect.Map:
 				if len(args) > 0 {
 					return nil, tooManyArgumentsErr("make")
 				}
 				return singleValue(reflect.MakeMap(tp))
-				
+
 			default:
 				return nil, cannotMakeTypeErr(tp)
 			}
@@ -205,7 +205,7 @@ func init() {
 			if len(args) > 2 {
 				return nil, tooManyArgumentsErr("delete")
 			}
-			
+
 			x, err := checkSingleValue(mch.evalExpr(ns, args[0]))
 			if err != nil {
 				return nil, err
@@ -219,13 +219,13 @@ func init() {
 				return nil, err
 			}
 			key = matchDestType(key, x.Type().Key())
-			
+
 			if key.Type() != x.Type().Key() {
 				return nil, cannotUseAsTypeInErr(args[1], key.Type(), x.Type().Key(), "delete")
 			}
-			
+
 			x.SetMapIndex(key, reflect.ValueOf(nil))
-			
+
 			return nil, nil
 		},
 	}
@@ -643,21 +643,21 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		if err != nil {
 			return nil, err
 		}
-		
+
 		switch x.Kind() {
 		case reflect.Slice:
 			i, err := asInteger(index)
 			if err != nil {
 				return nil, err
 			}
-	
+
 			return singleValue(x.Index(i))
 		case reflect.Map:
 			// TODO check type of index
 			index = matchDestType(index, x.Type().Key())
 			return valueToResult(MapIndexValue{x, index})
 		}
-		
+
 		return nil, invalidOperationTypeDoesNotSupportIndexingErr(expr, x.Kind())
 	case *ast.CompositeLit:
 		tp, err := mch.evalType(ns, expr.Type)
@@ -688,22 +688,22 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 				if err != nil {
 					return nil, err
 				}
-				
+
 				val, err := checkSingleValue(mch.evalExpr(ns, kv.Value))
 				if err != nil {
 					return nil, err
 				}
-				
+
 				key = matchDestType(key, tp.Key())
 				if key.Type() != tp.Key() {
 					return nil, cannotUseAsTypeInErr(kv.Key, key.Type(), tp.Key(), "map key")
 				}
-				
+
 				val = matchDestType(val, tp.Elem())
 				if val.Type() != tp.Elem() {
 					return nil, cannotUseAsTypeInErr(kv.Value, val.Type(), tp.Elem(), "map value")
 				}
-				
+
 				vl.SetMapIndex(key, val)
 			}
 			return singleValue(vl)

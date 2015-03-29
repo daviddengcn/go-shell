@@ -87,19 +87,44 @@ s = append(s, "def")`))
 
 func TestDelete(t *testing.T) {
 	mch := newMachine()
-	
+
 	assert.NoError(t, mch.Run(`m := map[string]int{
 	"abc": 1,
 	"def": 2,
 }
 l := len(m)`))
 	assert.Equals(t, "l", mch.GlobalNameSpace.FindLocal("l").Interface(), 2)
-	
+
 	assert.NoError(t, mch.Run(`delete(m, "ghg")
 l = len(m)`))
 	assert.Equals(t, "l", mch.GlobalNameSpace.FindLocal("l").Interface(), 2)
-	
+
 	assert.NoError(t, mch.Run(`delete(m, "abc")
 l = len(m)`))
 	assert.Equals(t, "l", mch.GlobalNameSpace.FindLocal("l").Interface(), 1)
+}
+
+func TestRange(t *testing.T) {
+	mch := newMachine()
+
+	assert.NoError(t, mch.Run(`nums := []int{2, 3, 4}
+sum := 0
+for _, num := range nums {
+    sum += num
+}`))
+	assert.Equals(t, "sum", mch.GlobalNameSpace.FindLocal("sum").Interface(), 9)
+
+	assert.NoError(t, mch.Run(`kvs := map[string]int{"a": 1, "b": 2}
+sum = 0
+for k, v := range kvs {
+    fmt.Printf("%s -> %d\n", k, v)
+	sum += v
+}`))
+	assert.Equals(t, "sum", mch.GlobalNameSpace.FindLocal("sum").Interface(), 3)
+
+	assert.NoError(t, mch.Run(`sum = 0
+for i, c := range "go" {
+	sum += i + int(c)
+}`))
+	assert.Equals(t, "sum", mch.GlobalNameSpace.FindLocal("sum").Interface(), 215)
 }

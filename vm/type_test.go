@@ -14,6 +14,7 @@ func newMachine() *machine {
 		"fmt": Package{
 			"Println": reflect.ValueOf(fmt.Println),
 			"Sprint":  reflect.ValueOf(fmt.Sprint),
+			"Printf":  reflect.ValueOf(fmt.Printf),
 		},
 		"math": Package{
 			"Sin": reflect.ValueOf(math.Sin),
@@ -118,7 +119,7 @@ e := s[0]`))
 
 func TestMapType(t *testing.T) {
 	mch := newMachine()
-	
+
 	assert.NoError(t, mch.Run(`m := make(map[string]int)
 m["k1"] = 7
 v := m["k1"]`))
