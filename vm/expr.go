@@ -174,10 +174,10 @@ func init() {
 		},
 		"copy": func(mch *machine, ns NameSpace, args []ast.Expr) ([]reflect.Value, error) {
 			if len(args) < 2 {
-				return nil, missingArgumentToFuncErr("len")
+				return nil, missingArgumentToFuncErr("copy")
 			}
 			if len(args) > 2 {
-				return nil, tooManyArgumentsErr("len")
+				return nil, tooManyArgumentsErr("copy")
 			}
 
 			x, err := checkSingleValue(mch.evalExpr(ns, args[0]))
@@ -197,6 +197,36 @@ func init() {
 			}
 
 			return valueToResult(reflect.Copy(x, y))
+		},
+		"delete": func(mch *machine, ns NameSpace, args []ast.Expr) ([]reflect.Value, error) {
+			if len(args) < 2 {
+				return nil, missingArgumentToFuncErr("delete")
+			}
+			if len(args) > 2 {
+				return nil, tooManyArgumentsErr("delete")
+			}
+			
+			x, err := checkSingleValue(mch.evalExpr(ns, args[0]))
+			if err != nil {
+				return nil, err
+			}
+			if x.Kind() != reflect.Map {
+				return nil, arugmentToMustBeHaveErr("first", "delete", "map", x.Type())
+			}
+
+			key, err := checkSingleValue(mch.evalExpr(ns, args[1]))
+			if err != nil {
+				return nil, err
+			}
+			key = matchDestType(key, x.Type().Key())
+			
+			if key.Type() != x.Type().Key() {
+				return nil, cannotUseAsTypeInErr(args[1], key.Type(), x.Type().Key(), "delete")
+			}
+			
+			x.SetMapIndex(key, reflect.ValueOf(nil))
+			
+			return nil, nil
 		},
 	}
 }
@@ -645,9 +675,36 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 				}
 				dstElt := matchDestType(vlElt, tp.Elem())
 				if !dstElt.Type().AssignableTo(tp.Elem()) {
-					return nil, cannotUseAsTypeInErr(dstElt, tp.Elem(), "array element")
+					return nil, cannotUseAsTypeInErr(elt, dstElt.Type(), tp.Elem(), "array element")
 				}
 				vl.Index(i).Set(dstElt)
+			}
+			return singleValue(vl)
+		case reflect.Map:
+			vl := reflect.MakeMap(tp)
+			for _, elt := range expr.Elts {
+				kv := elt.(*ast.KeyValueExpr)
+				key, err := checkSingleValue(mch.evalExpr(ns, kv.Key))
+				if err != nil {
+					return nil, err
+				}
+				
+				val, err := checkSingleValue(mch.evalExpr(ns, kv.Value))
+				if err != nil {
+					return nil, err
+				}
+				
+				key = matchDestType(key, tp.Key())
+				if key.Type() != tp.Key() {
+					return nil, cannotUseAsTypeInErr(kv.Key, key.Type(), tp.Key(), "map key")
+				}
+				
+				val = matchDestType(val, tp.Elem())
+				if val.Type() != tp.Elem() {
+					return nil, cannotUseAsTypeInErr(kv.Value, val.Type(), tp.Elem(), "map value")
+				}
+				
+				vl.SetMapIndex(key, val)
 			}
 			return singleValue(vl)
 		default:

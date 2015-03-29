@@ -93,3 +93,25 @@ k := s[1:2:3]`))
 	assert.StringEquals(t, "k", k, []string{"def"})
 	assert.Equals(t, "cap(k)", cap(k), 2)
 }
+
+func TestMap(t *testing.T) {
+	mch := newMachine()
+	
+	assert.NoError(t, mch.Run(`m := map[string]int{
+	"k1": 7,
+	"k2": 13,
+}
+k := m["k1"]`))
+	assert.Equals(t, "k", mch.GlobalNameSpace.FindLocal("k").Interface(), 7)
+	
+	assert.NoError(t, mch.Run(`l, ok := m["k2"]`))
+	assert.Equals(t, "l", mch.GlobalNameSpace.FindLocal("l").Interface(), 13)
+	assert.Equals(t, "ok", mch.GlobalNameSpace.FindLocal("ok").Interface(), true)
+	
+	assert.NoError(t, mch.Run(`l, ok = m["k3"]`))
+	assert.Equals(t, "l", mch.GlobalNameSpace.FindLocal("l").Interface(), 0)
+	assert.Equals(t, "ok", mch.GlobalNameSpace.FindLocal("ok").Interface(), false)
+	
+	assert.NoError(t, mch.Run(`l = m["k1"]`))
+	assert.Equals(t, "l", mch.GlobalNameSpace.FindLocal("l").Interface(), 7)
+}

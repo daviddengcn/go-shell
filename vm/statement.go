@@ -6,6 +6,8 @@ import (
 	"go/token"
 	"log"
 	"reflect"
+	
+//	"github.com/daviddengcn/go-villa"
 )
 
 type BranchErr int
@@ -30,12 +32,48 @@ func assignTo(v reflect.Value, vl reflect.Value) error {
 	return nil
 }
 
+func fillSingleValues(dst []reflect.Value, src reflect.Value) {
+	switch src.Type() {
+	case MapIndexValueType:
+		mi := src.Interface().(MapIndexValue)
+		val := mi.X.MapIndex(mi.Key)
+		if val.IsValid() {
+			dst[0] = val
+		} else {
+			dst[0] = reflect.Zero(mi.X.Type().Elem())
+		}
+		if len(dst) == 2 {
+			dst[1] = reflect.ValueOf(val.IsValid())
+		}
+	default:
+		dst[0] = src
+	}
+}
+
 func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 	switch st := st.(type) {
 	case *ast.AssignStmt:
+		var rV reflect.Value
 		// TODO when len(st.Rhs) == 1, check multi value return
-		if len(st.Lhs) != len(st.Rhs) {
-			return fmt.Errorf("assignment count mismatch: %d %s %d", len(st.Lhs), st.Tok, len(st.Rhs))
+		if len(st.Rhs) == 1 {
+			var err error
+			rV, err = checkSingleValue(mch.evalExpr(ns, st.Rhs[0]))
+			if err != nil {
+				return err
+			}
+			
+			if rV.Type() == MapIndexValueType {
+				switch len(st.Lhs) {
+				case 1, 2:
+					// ok
+				default:
+					return assignmentCountMismatchErr(len(st.Lhs), st.Tok, len(st.Rhs))
+				}
+			} else if len(st.Lhs) != 1 {
+				return assignmentCountMismatchErr(len(st.Lhs), st.Tok, len(st.Rhs))
+			}
+		} else  if len(st.Lhs) != len(st.Rhs) {
+			return assignmentCountMismatchErr(len(st.Lhs), st.Tok, len(st.Rhs))
 		}
 		switch st.Tok {
 		case token.DEFINE:
@@ -55,20 +93,25 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			}
 
 			// Compute values
-			values := make([]reflect.Value, len(st.Rhs))
-			for i, r := range st.Rhs {
-				rV, err := checkSingleValue(mch.evalExpr(ns, r))
-				if err != nil {
-					return err
+			// len of values is set to len(st.Lhs) in case Rhs are map index or type assert
+			values := make([]reflect.Value, len(st.Lhs))
+			if len(st.Rhs) == 1 {
+				fillSingleValues(values, rV)
+			} else {
+				for i, r := range st.Rhs {
+					rV, err := checkSingleValue(mch.evalExpr(ns, r))
+					if err != nil {
+						return err
+					}
+	
+					if len(st.Rhs) > 1 && rV.CanAddr() {
+						// Make a copy of lvalue for parallel assignments
+						tmp := reflect.New(rV.Type())
+						tmp.Elem().Set(rV)
+						rV = tmp.Elem()
+					}
+					values[i] = rV
 				}
-
-				if len(st.Rhs) > 1 && rV.CanAddr() {
-					// Make a copy of lvalue for parallel assignments
-					tmp := reflect.New(rV.Type())
-					tmp.Elem().Set(rV)
-					rV = tmp.Elem()
-				}
-				values[i] = rV
 			}
 
 			// Define and assign
@@ -90,19 +133,23 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			}
 
 		case token.ASSIGN:
-			values := make([]reflect.Value, len(st.Rhs))
-			for i, r := range st.Rhs {
-				rV, err := checkSingleValue(mch.evalExpr(ns, r))
-				if err != nil {
-					return err
+			values := make([]reflect.Value, len(st.Lhs))
+			if len(st.Rhs) == 1 {
+				fillSingleValues(values, rV)
+			} else {
+				for i, r := range st.Rhs {
+					rV, err := checkSingleValue(mch.evalExpr(ns, r))
+					if err != nil {
+						return err
+					}
+					if len(st.Rhs) > 1 && rV.CanAddr() {
+						// Make a copy of lvalue for parallel assignments
+						tmp := reflect.New(rV.Type())
+						tmp.Elem().Set(rV)
+						rV = tmp.Elem()
+					}
+					values[i] = rV
 				}
-				if len(st.Rhs) > 1 && rV.CanAddr() {
-					// Make a copy of lvalue for parallel assignments
-					tmp := reflect.New(rV.Type())
-					tmp.Elem().Set(rV)
-					rV = tmp.Elem()
-				}
-				values[i] = rV
 			}
 			for i, l := range st.Lhs {
 				v, err := checkSingleValue(mch.evalExpr(ns, l))

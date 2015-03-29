@@ -84,3 +84,22 @@ s = append(s, "def")`))
 	s := mch.GlobalNameSpace.FindLocal("s")
 	assert.Equals(t, "s", fmt.Sprint(s.Interface()), fmt.Sprint([]string{"abc", "def"}))
 }
+
+func TestDelete(t *testing.T) {
+	mch := newMachine()
+	
+	assert.NoError(t, mch.Run(`m := map[string]int{
+	"abc": 1,
+	"def": 2,
+}
+l := len(m)`))
+	assert.Equals(t, "l", mch.GlobalNameSpace.FindLocal("l").Interface(), 2)
+	
+	assert.NoError(t, mch.Run(`delete(m, "ghg")
+l = len(m)`))
+	assert.Equals(t, "l", mch.GlobalNameSpace.FindLocal("l").Interface(), 2)
+	
+	assert.NoError(t, mch.Run(`delete(m, "abc")
+l = len(m)`))
+	assert.Equals(t, "l", mch.GlobalNameSpace.FindLocal("l").Interface(), 1)
+}

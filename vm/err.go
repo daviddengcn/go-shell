@@ -104,8 +104,8 @@ func notATypeErr(name string) error {
 	return fmt.Errorf("%v is not a type", name)
 }
 
-func cannotUseAsTypeInErr(vl reflect.Value, tp reflect.Type, pos string) error {
-	return fmt.Errorf("cannot use %v (type %v) as type %v in %v", vl, vl.Type(), tp, pos)
+func cannotUseAsTypeInErr(x ast.Expr, tpX reflect.Type, tp reflect.Type, pos string) error {
+	return fmt.Errorf("cannot use %v (type %v) as type %v in %v", exprToStr(x), tpX, tp, pos)
 }
 
 func arugmentToMustBeHaveErr(nth, fn, expTp string, actTp reflect.Type) error {
@@ -114,6 +114,10 @@ func arugmentToMustBeHaveErr(nth, fn, expTp string, actTp reflect.Type) error {
 
 func cannotSliceErr(expr ast.Expr, tp reflect.Type) error {
 	return fmt.Errorf("cannot slice %v (type %v)", expr, tp)
+}
+
+func assignmentCountMismatchErr(nL int, tok token.Token, nR int) error {
+	return fmt.Errorf("assignment count mismatch: %d %v %d", nL, tok, nR)
 }
 
 var (

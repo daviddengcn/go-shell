@@ -213,7 +213,9 @@ type TypeValue struct {
 var TypeValueType = reflect.TypeOf(TypeValue{})
 
 type MapIndexValue struct {
+	// a map Value
 	X   reflect.Value
+	// a value same typed with X.Type().Key()
 	Key reflect.Value
 }
 var MapIndexValueType = reflect.TypeOf(MapIndexValue{})
