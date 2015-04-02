@@ -16,6 +16,7 @@ func newMachine() *machine {
 			"Println": reflect.ValueOf(fmt.Println),
 			"Sprint":  reflect.ValueOf(fmt.Sprint),
 			"Printf":  reflect.ValueOf(fmt.Printf),
+			"Errorf":  reflect.ValueOf(fmt.Errorf),
 		},
 		"math": Package{
 			"Sin": reflect.ValueOf(math.Sin),
@@ -128,4 +129,11 @@ func TestMapType(t *testing.T) {
 m["k1"] = 7
 v := m["k1"]`))
 	assert.StringEquals(t, "v", mch.GlobalNameSpace.FindLocal("v").Interface(), 7)
+}
+
+func TestErrorType(t *testing.T) {
+	mch := newMachine()
+	
+	assert.NoError(t, mch.Run(`var err error`))
+	assert.NoError(t, mch.Run(`err = fmt.Errorf("hello")`))
 }

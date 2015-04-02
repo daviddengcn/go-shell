@@ -196,6 +196,7 @@ var (
 		"complex64":  reflect.TypeOf(complex64(0)),
 		"complex128": reflect.TypeOf(complex128(0)),
 		"string":     reflect.TypeOf(""),
+		"error":      reflect.TypeOf((*error)(nil)).Elem(),
 	}
 )
 

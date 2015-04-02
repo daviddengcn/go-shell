@@ -53,7 +53,6 @@ func GenSource(imports []ImportAs, out io.Writer) error {
 	}
 	fmt.Fprintln(out, `)`)
 	
-	GoRootSrc := GoRoot.Join("src")
 	fmt.Fprintf(out, "var gImportedPkgs = gsvm.PackageNameSpace{Packages: map[string]gsvm.Package{\n")
 	pkgSrcs := make(map[string]*villa.ByteSlice)
 	for _, ia := range imports {
@@ -62,11 +61,10 @@ func GenSource(imports []ImportAs, out io.Writer) error {
 			continue
 		}
 		
-		dir := GoRootSrc.Join(ia.Path)
-		fmt.Println("import", ia.Alias, strconv.Quote(dir.S()))
-		
 		fs := token.NewFileSet()
 		pkgInfo, _ := build.Import(ia.Path, "", 0)
+		dir := villa.Path(pkgInfo.Dir)
+		fmt.Println("import", ia.Alias, strconv.Quote(ia.Path))
 		for _, goFile := range pkgInfo.GoFiles {
 			fn := dir.Join(goFile)
 			f, err := parser.ParseFile(fs, fn.S(), nil, 0)
