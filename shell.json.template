@@ -1,5 +1,6 @@
 {
 	import: {
+    // <package-path>: <alias>
 	//	"fmt": ""
 	//	"reflect": ""
 	//	"math": ""
