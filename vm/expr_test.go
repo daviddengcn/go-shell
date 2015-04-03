@@ -136,3 +136,11 @@ func TestClosure(t *testing.T) {
 	}`))
 	*/
 }
+
+func TestMethodCall(t *testing.T) {
+	mch := newMachine()
+
+	assert.NoError(t, mch.Run(`s := fmt.Errorf("hello")
+t := s.Error()`))
+	assert.Equals(t, "t", mch.GlobalNameSpace.FindLocal("t").Interface(), "hello")
+}

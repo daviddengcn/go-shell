@@ -395,7 +395,9 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 
 		switch x.Type() {
 		case ConstValueType:
+			return nil, villa.Errorf("Not implemented!")
 		case TypeValueType:
+			return nil, villa.Errorf("Not implemented!")
 		case PackageType:
 			x := x.Interface().(Package)
 			if vl, ok := x[expr.Sel.Name]; ok {
@@ -405,20 +407,23 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		default:
 		}
 
-		for x.Kind() == reflect.Ptr {
+		for {
+			if x.Kind() == reflect.Struct {
+				if vl := x.FieldByName(expr.Sel.Name); vl.IsValid() {
+					return singleValue(vl)
+				}
+			}
+			
+			if vl := x.MethodByName(expr.Sel.Name); vl.IsValid() {
+				return singleValue(vl)
+			}
+			
+			if x.Kind() != reflect.Ptr {
+				break
+			}
 			x = x.Elem()
 		}
 
-		if x.Kind() != reflect.Struct {
-			return nil, fmt.Errorf("no-struct")
-		}
-
-		if vl := x.FieldByName(expr.Sel.Name); vl.IsValid() {
-			return singleValue(vl)
-		}
-		if vl := x.MethodByName(expr.Sel.Name); vl.IsValid() {
-			return singleValue(vl)
-		}
 		return nil, fmt.Errorf("nofound")
 
 	case *ast.UnaryExpr:
@@ -458,7 +463,7 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 				return singleValue(x.Addr())
 			}
 			return nil, cannotTakeTheAddressOfErr(expr.X)
-			// TODO token.ARROW
+		// TODO token.ARROW
 		}
 		return nil, invalidOperationErr(expr.Op.String(), x.Type())
 

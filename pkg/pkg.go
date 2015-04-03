@@ -53,6 +53,17 @@ func GenSource(imports []ImportAs, out io.Writer) error {
 	}
 	fmt.Fprintln(out, `)`)
 	
+	fmt.Fprintln(out,`
+var(
+	valueOf = reflect.ValueOf
+	typeOf = gsvm.PtrToTypeValue
+)
+
+func elemOf(vl interface{}) reflect.Value {
+	return reflect.ValueOf(vl).Elem()
+}
+`)
+	
 	fmt.Fprintf(out, "var gImportedPkgs = gsvm.PackageNameSpace{Packages: map[string]gsvm.Package{\n")
 	pkgSrcs := make(map[string]*villa.ByteSlice)
 	for _, ia := range imports {
@@ -95,14 +106,14 @@ func GenSource(imports []ImportAs, out io.Writer) error {
 						// a Go bug
 						continue
 					}
-					fmt.Fprintf(pkgSrcs[pkgName], "    %s: reflect.ValueOf(%s),\n", strconv.Quote(objName), refName)
+					fmt.Fprintf(pkgSrcs[pkgName], "    %s: valueOf(%s),\n", strconv.Quote(objName), refName)
 				case ast.Typ:
-					fmt.Fprintf(pkgSrcs[pkgName], "    %s: reflect.ValueOf(gsvm.TypeValue{reflect.TypeOf((*%s)(nil)).Elem()}),\n",
+					fmt.Fprintf(pkgSrcs[pkgName], "    %s: typeOf((*%s)(nil)),\n",
 						strconv.Quote(objName), refName)
 				case ast.Var:
-					fmt.Fprintf(pkgSrcs[pkgName], "    %s: reflect.ValueOf(&%s).Elem(),\n", strconv.Quote(objName), refName)
+					fmt.Fprintf(pkgSrcs[pkgName], "    %s: elemOf(&%s),\n", strconv.Quote(objName), refName)
 				case ast.Fun:
-					fmt.Fprintf(pkgSrcs[pkgName], "    %s: reflect.ValueOf(%s),\n", strconv.Quote(objName), refName)
+					fmt.Fprintf(pkgSrcs[pkgName], "    %s: valueOf(%s),\n", strconv.Quote(objName), refName)
 				}
 			}
 		}

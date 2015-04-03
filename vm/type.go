@@ -216,6 +216,10 @@ type TypeValue struct {
 	reflect.Type
 }
 
+func PtrToTypeValue(ptr interface{}) reflect.Value {
+	return reflect.ValueOf(TypeValue{reflect.TypeOf(ptr).Elem()})
+}
+
 var TypeValueType = reflect.TypeOf(TypeValue{})
 
 type MapIndexValue struct {
