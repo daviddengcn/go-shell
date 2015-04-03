@@ -119,6 +119,24 @@ func init() {
 					return nil, tooManyArgumentsErr("make")
 				}
 				return singleValue(reflect.MakeMap(tp))
+				
+			case reflect.Chan:
+				if len(args) > 1 {
+					return nil, tooManyArgumentsErr("make")
+				}
+				
+				buf := 0
+				if len(args) == 1 {
+					vlBuf, err := checkSingleValue(mch.evalExpr(ns, args[0]))
+					if err != nil {
+						return nil, err
+					}
+					if buf, err = asInteger(vlBuf); err != nil {
+						return nil, err
+					}
+				}
+				
+				return singleValue(reflect.MakeChan(tp, buf))
 
 			default:
 				return nil, cannotMakeTypeErr(tp)

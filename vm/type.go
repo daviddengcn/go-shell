@@ -227,6 +227,12 @@ type MapIndexValue struct {
 
 var MapIndexValueType = reflect.TypeOf(MapIndexValue{})
 
+var chanDir = map[ast.ChanDir]reflect.ChanDir{
+	ast.SEND: reflect.SendDir,
+	ast.RECV: reflect.RecvDir,
+	ast.SEND | ast.RECV: reflect.BothDir,
+}
+
 func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) {
 	switch expr := expr.(type) {
 	case *ast.Ident:
@@ -286,6 +292,14 @@ func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) 
 
 	case *ast.FuncType:
 		return nil, villa.Error("Waiting for reflect package to support reflect.FuncOf")
+		
+	case *ast.ChanType:
+		vType, err := mch.evalType(ns, expr.Value)
+		if err != nil {
+			return nil, err
+		}
+		
+		return reflect.ChanOf(chanDir[expr.Dir], vType), nil
 	default:
 		ast.Print(token.NewFileSet(), expr)
 		return nil, villa.Errorf("Unknown type expr: %+v", expr)

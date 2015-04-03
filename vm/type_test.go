@@ -137,3 +137,10 @@ func TestErrorType(t *testing.T) {
 	assert.NoError(t, mch.Run(`var err error`))
 	assert.NoError(t, mch.Run(`err = fmt.Errorf("hello")`))
 }
+
+func TestChanType(t *testing.T) {
+	mch := newMachine()
+	
+	assert.NoError(t, mch.Run(`messages := make(chan string)`))
+//	assert.NoError(t, mch.Run(`go func() { messages <- "ping" }()`))
+}
