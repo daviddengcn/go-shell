@@ -237,6 +237,8 @@ var chanDir = map[ast.ChanDir]reflect.ChanDir{
 	ast.SEND | ast.RECV: reflect.BothDir,
 }
 
+var NakedFuncType = reflect.TypeOf(func(){})
+
 func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) {
 	switch expr := expr.(type) {
 	case *ast.Ident:
@@ -295,6 +297,11 @@ func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) 
 		return reflect.MapOf(keyTp, valTp), nil
 
 	case *ast.FuncType:
+		if len(expr.Params.List) == 0 && expr.Results == nil {
+			return NakedFuncType, nil
+		}
+		
+		ast.Print(token.NewFileSet(), expr)
 		return nil, villa.Error("Waiting for reflect package to support reflect.FuncOf")
 		
 	case *ast.ChanType:

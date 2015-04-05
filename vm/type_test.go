@@ -142,5 +142,18 @@ func TestChanType(t *testing.T) {
 	mch := newMachine()
 	
 	assert.NoError(t, mch.Run(`messages := make(chan string)`))
-//	assert.NoError(t, mch.Run(`go func() { messages <- "ping" }()`))
+	assert.NoError(t, mch.Run(`messages = make(chan string, 1)`))
+}
+
+func TestFuncLiteral(t *testing.T) {
+	mch := newMachine()
+	
+	assert.NoError(t, mch.Run(`i := 10
+f := func() {
+	fmt.Println("hello")
+	i = 20
+}`))
+	assert.StringEquals(t, "i", mch.GlobalNameSpace.FindLocal("i").Interface(), 10)
+	assert.NoError(t, mch.Run(`f()`))
+	assert.StringEquals(t, "i", mch.GlobalNameSpace.FindLocal("i").Interface(), 20)
 }

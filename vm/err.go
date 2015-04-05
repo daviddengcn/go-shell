@@ -92,6 +92,10 @@ func undefinedErr(s string) error {
 	return UndefinedError{fmt.Errorf("undefined: %v", s)}
 }
 
+func undefinedTypeHasNotFieldOrMethod(expr ast.Expr, tp reflect.Type, field string) error {
+	return fmt.Errorf("%s undefined (type %v has not field or method %v)", exprToStr(expr), tp, field)
+}
+
 func cannotMakeTypeErr(tp reflect.Type) error {
 	return fmt.Errorf("cannot make type %v", tp)
 }

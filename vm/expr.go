@@ -423,8 +423,8 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 			}
 			x = x.Elem()
 		}
-
-		return nil, fmt.Errorf("nofound")
+		
+		return nil, undefinedTypeHasNotFieldOrMethod(expr, x.Type(), expr.Sel.Name)
 
 	case *ast.UnaryExpr:
 		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
@@ -822,6 +822,24 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		} else {
 			return singleValue(x.Slice(i, j))
 		}
+		
+	case *ast.FuncLit:
+		tp, err := mch.evalType(ns, expr.Type)
+		if err != nil {
+			return nil, err
+		}
+		
+		_ = tp
+		return singleValue(reflect.MakeFunc(tp, func(args []reflect.Value)[]reflect.Value {
+			if len(args) > 0 {
+				panic("Not implemented!")
+			}
+			
+			newNS := ns.NewBlock()
+			mch.runStatement(newNS, expr.Body)
+			
+			return nil
+		}))
 	}
 	ast.Print(token.NewFileSet(), expr)
 	return nil, villa.Errorf("Unknown expr type")
