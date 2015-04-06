@@ -2,6 +2,7 @@ package gsvm
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/daviddengcn/go-assert"
@@ -46,11 +47,20 @@ func TestOpAssignStatement(t *testing.T) {
 	mch := newMachine()
 
 	assert.NoError(t, mch.Run(`s := "abc"`))
-	s := mch.GlobalNameSpace.FindLocal("s")
-	assert.NotEquals(t, "s", s, NoValue)
-	assert.Equals(t, "s", s.Interface(), "abc")
+	assert.Equals(t, "s", mch.GlobalNameSpace.FindLocal("s").Interface(), "abc")
 
 	assert.NoError(t, mch.Run(`s += "def"`))
+	
+	assert.NoError(t, mch.Run(`m := map[string]int{"def": 10}
+k, ok := m["abc"]`))
+	assert.Equals(t, "k", mch.GlobalNameSpace.FindLocal("k").Interface(), 0)
+	assert.Equals(t, "ok", mch.GlobalNameSpace.FindLocal("ok").Interface(), false)
+	assert.NoError(t, mch.Run(`k, ok = m["def"]`))
+	assert.Equals(t, "k", mch.GlobalNameSpace.FindLocal("k").Interface(), 10)
+	assert.Equals(t, "ok", mch.GlobalNameSpace.FindLocal("ok").Interface(), true)
+	assert.NoError(t, mch.Run(`k, l := m["a"], 15`))
+	assert.Equals(t, "k", mch.GlobalNameSpace.FindLocal("k").Interface(), 0)
+	assert.Equals(t, "l", mch.GlobalNameSpace.FindLocal("l").Interface(), 15)
 }
 
 func TestSwitchStatment(t *testing.T) {
@@ -127,4 +137,18 @@ for i, c := range "go" {
 	sum += i + int(c)
 }`))
 	assert.Equals(t, "sum", mch.GlobalNameSpace.FindLocal("sum").Interface(), 215)
+}
+
+func TestMultiReturnFuncCall(t *testing.T) {
+	mch := newMachine()
+
+	assert.NoError(t, mch.Run(`s, c := math.Sincos(0)`))
+	s, c := math.Sincos(0)
+	assert.Equals(t, "s", mch.GlobalNameSpace.FindLocal("s").Interface(), s)
+	assert.Equals(t, "c", mch.GlobalNameSpace.FindLocal("c").Interface(), c)
+	
+	assert.NoError(t, mch.Run(`s, c = math.Sincos(0.1)`))
+	s, c = math.Sincos(0.1)
+	assert.Equals(t, "s", mch.GlobalNameSpace.FindLocal("s").Interface(), s)
+	assert.Equals(t, "c", mch.GlobalNameSpace.FindLocal("c").Interface(), c)
 }

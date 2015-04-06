@@ -20,6 +20,7 @@ func newMachine() *machine {
 		},
 		"math": Package{
 			"Sin": reflect.ValueOf(math.Sin),
+			"Sincos": reflect.ValueOf(math.Sincos),
 		},
 		"reflect": Package{
 			"ValueOf": reflect.ValueOf(reflect.ValueOf),
@@ -29,7 +30,7 @@ func newMachine() *machine {
 			"TypeValue": reflect.ValueOf(TypeValue{reflect.TypeOf(TypeValue{})}),
 		},
 		"color": Package{
-			"Alpha": reflect.ValueOf(TypeValue{reflect.TypeOf(color.Alpha{})}),
+			"Alpha": PtrToTypeValue((*color.Alpha)(nil)),
 		},
 	}}).(*machine)
 }

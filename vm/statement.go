@@ -15,13 +15,17 @@ type BranchErr int
 const (
 	beBreak BranchErr = iota
 	beContinue
+	beReturn
 )
 
 func (e BranchErr) Error() string {
-	if e == beBreak {
+	switch e {
+	case beBreak:
 		return "break"
+	case beContinue:
+		return "continue"
 	}
-	return "continue"
+	return "return"
 }
 
 func assignTo(v reflect.Value, vl reflect.Value) error {
@@ -53,24 +57,31 @@ func fillSingleValues(dst []reflect.Value, src reflect.Value) {
 func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 	switch st := st.(type) {
 	case *ast.AssignStmt:
-		var rV reflect.Value
+		var rVs []reflect.Value
 		// TODO when len(st.Rhs) == 1, check multi value return
 		if len(st.Rhs) == 1 {
 			var err error
-			rV, err = checkSingleValue(mch.evalExpr(ns, st.Rhs[0]))
+			rVs, err = mch.evalExpr(ns, st.Rhs[0])
 			if err != nil {
 				return err
 			}
-
-			if rV.Type() == MapIndexValueType {
-				switch len(st.Lhs) {
-				case 1, 2:
-					// ok
-				default:
+			
+			if len(rVs) == 1 {
+				rV := rVs[0]
+				if rV.Type() == MapIndexValueType {
+					switch len(st.Lhs) {
+					case 1, 2:
+						// ok
+					default:
+						return assignmentCountMismatchErr(len(st.Lhs), st.Tok, len(st.Rhs))
+					}
+				} else if len(st.Lhs) != 1 {
 					return assignmentCountMismatchErr(len(st.Lhs), st.Tok, len(st.Rhs))
 				}
-			} else if len(st.Lhs) != 1 {
-				return assignmentCountMismatchErr(len(st.Lhs), st.Tok, len(st.Rhs))
+			} else {
+				if len(st.Lhs) != len(rVs) {
+					return assignmentCountMismatchErr(len(st.Lhs), st.Tok, len(rVs))
+				}
 			}
 		} else if len(st.Lhs) != len(st.Rhs) {
 			return assignmentCountMismatchErr(len(st.Lhs), st.Tok, len(st.Rhs))
@@ -94,10 +105,15 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 
 			// Compute values
 			// len of values is set to len(st.Lhs) in case Rhs are map index or type assert
-			values := make([]reflect.Value, len(st.Lhs))
-			if len(st.Rhs) == 1 {
-				fillSingleValues(values, rV)
+			var values []reflect.Value
+			if len(rVs) == 1 {
+				values = make([]reflect.Value, len(st.Lhs))
+				fillSingleValues(values, rVs[0])
+			} else  if len(rVs) > 0 {
+				// this is the case when a multi return value func is called
+				values = rVs
 			} else {
+				values = make([]reflect.Value, len(st.Lhs))
 				for i, r := range st.Rhs {
 					rV, err := checkSingleValue(mch.evalExpr(ns, r))
 					if err != nil {
@@ -133,10 +149,15 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			}
 
 		case token.ASSIGN:
-			values := make([]reflect.Value, len(st.Lhs))
-			if len(st.Rhs) == 1 {
-				fillSingleValues(values, rV)
+			var values []reflect.Value
+			if len(rVs) == 1 {
+				values = make([]reflect.Value, len(st.Lhs))
+				fillSingleValues(values, rVs[0])
+			} else if len(rVs) > 0 {
+				// this is the case when a multi return value func is called
+				values = rVs
 			} else {
+				values = make([]reflect.Value, len(st.Lhs))
 				for i, r := range st.Rhs {
 					rV, err := checkSingleValue(mch.evalExpr(ns, r))
 					if err != nil {

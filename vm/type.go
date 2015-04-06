@@ -93,8 +93,12 @@ func matchType(x, y reflect.Value) (nX, nY reflect.Value, err error) {
 // fail to match, return vl.
 func matchDestType(vl reflect.Value, dstTp reflect.Type) reflect.Value {
 	if vl.Type() == MapIndexValueType {
-		vl := vl.Interface().(MapIndexValue)
-		return matchDestType(vl.X.MapIndex(vl.Key), dstTp)
+		mVl := vl.Interface().(MapIndexValue)
+		vl := mVl.X.MapIndex(mVl.Key)
+		if !vl.IsValid() {
+			vl = reflect.Zero(mVl.X.Type().Elem())
+		}
+		return matchDestType(vl, dstTp)
 	}
 
 	if vl.Type() == ConstValueType {
