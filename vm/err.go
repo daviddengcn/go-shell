@@ -109,6 +109,9 @@ func notATypeErr(name string) error {
 }
 
 func cannotUseAsTypeInErr(x ast.Expr, tpX reflect.Type, tp reflect.Type, pos string) error {
+	if tpX.Kind() == reflect.Interface {
+		return fmt.Errorf("cannot use %v (type %v) as type %v in %v: need type assertion", exprToStr(x), tpX, tp, pos)
+	}
 	return fmt.Errorf("cannot use %v (type %v) as type %v in %v", exprToStr(x), tpX, tp, pos)
 }
 
@@ -126,6 +129,14 @@ func assignmentCountMismatchErr(nL int, tok token.Token, nR int) error {
 
 func cannotRangeOverErr(x ast.Expr, tp reflect.Type) error {
 	return fmt.Errorf("cannot range over %s (type %v)", exprToStr(x), tp)
+}
+
+func invalidTypeAssertionErr(expr ast.Expr, tp reflect.Type) error {
+	return fmt.Errorf("invalid type assertion: %s (non-interface type %v on left)", exprToStr(expr), tp)
+}
+
+func interfaceConversionIsNotErr(xTp, dstTp reflect.Type) error {
+	return fmt.Errorf("interface conversion: %v is not %v", xTp, dstTp)
 }
 
 var (

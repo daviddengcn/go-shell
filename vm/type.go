@@ -147,6 +147,12 @@ func matchDestType(vl reflect.Value, dstTp reflect.Type) reflect.Value {
 		}
 	}
 
+	if dstTp.Kind() == reflect.Interface {
+		if vl.Type().Implements(dstTp) {
+			return vl.Convert(dstTp)
+		}
+	}
+
 	return vl
 }
 
@@ -177,8 +183,9 @@ func literalAssignConvert(v reflect.Value, dstTp reflect.Type) (reflect.Value, e
 }
 
 var (
-	intType  = reflect.TypeOf(int(0))
-	runeType = reflect.TypeOf(rune(0))
+	intType       = reflect.TypeOf(int(0))
+	runeType      = reflect.TypeOf(rune(0))
+	interfaceType = reflect.TypeOf((*interface{})(nil)).Elem()
 )
 
 var (
@@ -236,12 +243,12 @@ type MapIndexValue struct {
 var MapIndexValueType = reflect.TypeOf(MapIndexValue{})
 
 var chanDir = map[ast.ChanDir]reflect.ChanDir{
-	ast.SEND: reflect.SendDir,
-	ast.RECV: reflect.RecvDir,
+	ast.SEND:            reflect.SendDir,
+	ast.RECV:            reflect.RecvDir,
 	ast.SEND | ast.RECV: reflect.BothDir,
 }
 
-var NakedFuncType = reflect.TypeOf(func(){})
+var NakedFuncType = reflect.TypeOf(func() {})
 
 func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) {
 	switch expr := expr.(type) {
@@ -304,17 +311,24 @@ func (mch *machine) evalType(ns NameSpace, expr ast.Expr) (reflect.Type, error) 
 		if len(expr.Params.List) == 0 && expr.Results == nil {
 			return NakedFuncType, nil
 		}
-		
+
 		ast.Print(token.NewFileSet(), expr)
 		return nil, villa.Error("Waiting for reflect package to support reflect.FuncOf")
-		
+
 	case *ast.ChanType:
 		vType, err := mch.evalType(ns, expr.Value)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		return reflect.ChanOf(chanDir[expr.Dir], vType), nil
+
+	case *ast.InterfaceType:
+		if len(expr.Methods.List) > 0 {
+			return nil, villa.Error("Not implemented!")
+		}
+		return interfaceType, nil
+
 	default:
 		ast.Print(token.NewFileSet(), expr)
 		return nil, villa.Errorf("Unknown type expr: %+v", expr)

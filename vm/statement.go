@@ -65,7 +65,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			if err != nil {
 				return err
 			}
-			
+
 			if len(rVs) == 1 {
 				rV := rVs[0]
 				if rV.Type() == MapIndexValueType {
@@ -109,7 +109,7 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 			if len(rVs) == 1 {
 				values = make([]reflect.Value, len(st.Lhs))
 				fillSingleValues(values, rVs[0])
-			} else  if len(rVs) > 0 {
+			} else if len(rVs) > 0 {
 				// this is the case when a multi return value func is called
 				values = rVs
 			} else {
@@ -187,7 +187,18 @@ func (mch *machine) runStatement(ns NameSpace, st ast.Stmt) error {
 				if !v.CanSet() {
 					return cannotAssignToErr(l)
 				}
-				v.Set(matchDestType(values[i], v.Type()))
+				values[i] = matchDestType(values[i], v.Type())
+				if values[i].Type() != v.Type() {
+					if len(st.Rhs) == len(st.Lhs) {
+						return cannotUseAsTypeInErr(st.Rhs[i], values[i].Type(), v.Type(), "assignment")
+					}
+				}
+				/*				m := map[string]int{}
+								var j string
+								var k int
+								j, k = m["abc"] */
+				fmt.Println(values[i].Type(), v.Type())
+				v.Set(values[i])
 			}
 
 		case token.ADD_ASSIGN, token.SUB_ASSIGN, token.MUL_ASSIGN, token.QUO_ASSIGN, token.REM_ASSIGN:

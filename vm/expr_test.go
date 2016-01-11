@@ -144,3 +144,16 @@ func TestMethodCall(t *testing.T) {
 t := s.Error()`))
 	assert.Equals(t, "t", mch.GlobalNameSpace.FindLocal("t").Interface(), "hello")
 }
+
+func TestTypeAssertion(t *testing.T) {
+	mch := newMachine()
+
+	assert.NoError(t, mch.Run(`i := 10
+var j interface{}
+j = i`))
+	assert.StringEquals(t, "i", mch.GlobalNameSpace.FindLocal("i").Interface(), 10)
+	assert.StringEquals(t, "j", mch.GlobalNameSpace.FindLocal("j").Interface(), 10)
+
+	assert.NoError(t, mch.Run(`var k int
+k = j.(int)`))
+}

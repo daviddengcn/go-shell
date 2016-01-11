@@ -19,7 +19,7 @@ func newMachine() *machine {
 			"Errorf":  reflect.ValueOf(fmt.Errorf),
 		},
 		"math": Package{
-			"Sin": reflect.ValueOf(math.Sin),
+			"Sin":    reflect.ValueOf(math.Sin),
 			"Sincos": reflect.ValueOf(math.Sincos),
 		},
 		"reflect": Package{
@@ -134,21 +134,21 @@ v := m["k1"]`))
 
 func TestErrorType(t *testing.T) {
 	mch := newMachine()
-	
+
 	assert.NoError(t, mch.Run(`var err error`))
 	assert.NoError(t, mch.Run(`err = fmt.Errorf("hello")`))
 }
 
 func TestChanType(t *testing.T) {
 	mch := newMachine()
-	
+
 	assert.NoError(t, mch.Run(`messages := make(chan string)`))
 	assert.NoError(t, mch.Run(`messages = make(chan string, 1)`))
 }
 
 func TestFuncLiteral(t *testing.T) {
 	mch := newMachine()
-	
+
 	assert.NoError(t, mch.Run(`i := 10
 f := func() {
 	fmt.Println("hello")

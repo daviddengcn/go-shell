@@ -119,12 +119,12 @@ func init() {
 					return nil, tooManyArgumentsErr("make")
 				}
 				return singleValue(reflect.MakeMap(tp))
-				
+
 			case reflect.Chan:
 				if len(args) > 1 {
 					return nil, tooManyArgumentsErr("make")
 				}
-				
+
 				buf := 0
 				if len(args) == 1 {
 					vlBuf, err := checkSingleValue(mch.evalExpr(ns, args[0]))
@@ -135,7 +135,7 @@ func init() {
 						return nil, err
 					}
 				}
-				
+
 				return singleValue(reflect.MakeChan(tp, buf))
 
 			default:
@@ -413,17 +413,17 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 					return singleValue(vl)
 				}
 			}
-			
+
 			if vl := x.MethodByName(expr.Sel.Name); vl.IsValid() {
 				return singleValue(vl)
 			}
-			
+
 			if x.Kind() != reflect.Ptr {
 				break
 			}
 			x = x.Elem()
 		}
-		
+
 		return nil, undefinedTypeHasNotFieldOrMethod(expr, x.Type(), expr.Sel.Name)
 
 	case *ast.UnaryExpr:
@@ -463,7 +463,7 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 				return singleValue(x.Addr())
 			}
 			return nil, cannotTakeTheAddressOfErr(expr.X)
-		// TODO token.ARROW
+			// TODO token.ARROW
 		}
 		return nil, invalidOperationErr(expr.Op.String(), x.Type())
 
@@ -822,24 +822,47 @@ func (mch *machine) evalExpr(ns NameSpace, expr ast.Expr) ([]reflect.Value, erro
 		} else {
 			return singleValue(x.Slice(i, j))
 		}
-		
+
 	case *ast.FuncLit:
 		tp, err := mch.evalType(ns, expr.Type)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		_ = tp
-		return singleValue(reflect.MakeFunc(tp, func(args []reflect.Value)[]reflect.Value {
+		return singleValue(reflect.MakeFunc(tp, func(args []reflect.Value) []reflect.Value {
 			if len(args) > 0 {
 				panic("Not implemented!")
 			}
-			
+
 			newNS := ns.NewBlock()
 			mch.runStatement(newNS, expr.Body)
-			
+
 			return nil
 		}))
+	case *ast.TypeAssertExpr:
+		x, err := checkSingleValue(mch.evalExpr(ns, expr.X))
+		if err != nil {
+			return nil, err
+		}
+
+		if x.Kind() != reflect.Interface {
+			return nil, invalidTypeAssertionErr(expr, x.Type())
+		}
+
+		tp, err := mch.evalType(ns, expr.Type)
+		if err != nil {
+			return nil, err
+		}
+
+		// convert x to its real value
+		x = x.Elem()
+
+		if !x.Type().ConvertibleTo(tp) {
+			return nil, interfaceConversionIsNotErr(x.Type(), tp)
+		}
+
+		return singleValue(x.Convert(tp))
 	}
 	ast.Print(token.NewFileSet(), expr)
 	return nil, villa.Errorf("Unknown expr type")

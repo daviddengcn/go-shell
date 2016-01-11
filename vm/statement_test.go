@@ -50,7 +50,7 @@ func TestOpAssignStatement(t *testing.T) {
 	assert.Equals(t, "s", mch.GlobalNameSpace.FindLocal("s").Interface(), "abc")
 
 	assert.NoError(t, mch.Run(`s += "def"`))
-	
+
 	assert.NoError(t, mch.Run(`m := map[string]int{"def": 10}
 k, ok := m["abc"]`))
 	assert.Equals(t, "k", mch.GlobalNameSpace.FindLocal("k").Interface(), 0)
@@ -146,7 +146,7 @@ func TestMultiReturnFuncCall(t *testing.T) {
 	s, c := math.Sincos(0)
 	assert.Equals(t, "s", mch.GlobalNameSpace.FindLocal("s").Interface(), s)
 	assert.Equals(t, "c", mch.GlobalNameSpace.FindLocal("c").Interface(), c)
-	
+
 	assert.NoError(t, mch.Run(`s, c = math.Sincos(0.1)`))
 	s, c = math.Sincos(0.1)
 	assert.Equals(t, "s", mch.GlobalNameSpace.FindLocal("s").Interface(), s)
